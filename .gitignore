@@ -1,0 +1,29 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Env — NEVER commit real secrets
+.env
+.env.local
+.env.production
+
+# Next.js
+ui/node_modules/
+ui/.next/
+ui/.vercel/
+ui/out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

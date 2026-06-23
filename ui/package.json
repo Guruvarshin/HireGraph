@@ -1,0 +1,22 @@
+{
+  "name": "hiregraph-ui",
+  "version": "1.0.0",
+  "description": "Next.js frontend for HireGraph AI Recruiting Pipeline",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-hook-form": "^7.52.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.0.0"
+  }
+}

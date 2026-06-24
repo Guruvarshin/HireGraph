@@ -46,7 +46,7 @@ def _offer_review(state: PipelineState) -> dict:
 def _send_offers(state: PipelineState) -> dict:
 
 
-    from utils.google_client import send_offer_email
+    from utils.email_client import send_offer_email
 
     user_id: str = state.get("user_id", "")
     offer_drafts: list[dict] = state.get("offer_drafts", [])

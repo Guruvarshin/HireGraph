@@ -24,12 +24,13 @@ _CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 _REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
 _FRONTEND_URL  = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
+# Sign-in only. These are non-sensitive scopes, so the app needs NO Google
+# verification. Email is sent via Resend and calendar invites via .ics
+# attachments — neither requires a Google API scope.
 _SCOPES = " ".join([
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/calendar",
 ])
 
 _AUTH_URI      = "https://accounts.google.com/o/oauth2/v2/auth"

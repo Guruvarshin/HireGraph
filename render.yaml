@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: hiregraph-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore          # closest free region to India
+    healthCheckPath: /health
+    envVars:
+      # --- Non-secret config (safe to commit) ---
+      - key: OPENAI_AGENT_MODEL
+        value: gpt-4o
+      - key: OPENAI_GRADER_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_PARSER_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: MONGODB_DB_NAME
+        value: recruiting_pipeline
+      - key: PINECONE_INDEX_NAME
+        value: recruiting-pipeline
+      - key: PINECONE_ENVIRONMENT
+        value: us-east-1
+      - key: GMAIL_ADDRESS
+        value: guruvarshinib.ai@gmail.com
+      - key: GOOGLE_CLIENT_ID
+        value: 1026324181096-mrv2cb21ltss573kgqr6vf1eueqhcedb.apps.googleusercontent.com
+      # Update this to your Render URL after the first deploy, then in Google Console too
+      - key: GOOGLE_REDIRECT_URI
+        value: https://hiregraph-backend.onrender.com/auth/google/callback
+      - key: FRONTEND_URL
+        value: http://localhost:3000
+      # --- Secrets: set these in the Render dashboard, NOT committed ---
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: SECRET_KEY
+        sync: false

@@ -464,7 +464,7 @@ async def send_interview_invites(
 ):
 
 
-    from utils.google_client import send_interview_invite, create_calendar_event
+    from utils.email_client import send_interview_invite
 
     state = get_pipeline_state(thread_id)
     if not state or state.get("user_id") != x_recruiter_id:
@@ -513,7 +513,8 @@ async def send_interview_invites(
             continue
 
         try:
-
+            # The invite email embeds one .ics calendar attachment per
+            # scheduled round, so recipients can add events to any calendar.
             send_interview_invite(
                 user_id=x_recruiter_id,
                 to_email=candidate_email,
@@ -521,47 +522,6 @@ async def send_interview_invites(
                 job_title=jd.get("title", "the role"),
                 rounds=plan.get("rounds", []),
             )
-
-
-            for round_info in plan.get("rounds", []):
-                round_type = round_info.get("type", "interview").replace("_", " ").title()
-                summary = f"{round_type} Interview — {candidate_name}"
-
-
-                scheduled_at = round_info.get("scheduled_at")
-                if not scheduled_at or scheduled_at == "TBD":
-                    continue
-
-                duration_minutes = round_info.get("duration_minutes", 60)
-
-
-                try:
-                    from datetime import timedelta
-                    start_dt = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
-                    end_dt = start_dt + timedelta(minutes=duration_minutes)
-                except Exception:
-                    continue
-
-                attendee_emails = [candidate_email] + round_info.get("interviewer_emails", [])
-
-                try:
-                    event_id = create_calendar_event(
-                        user_id=x_recruiter_id,
-                        summary=summary,
-                        description=f"Role: {jd.get('title')}\nCandidates: {candidate_name}",
-                        start_iso=start_dt.isoformat(),
-                        end_iso=end_dt.isoformat(),
-                        attendee_emails=attendee_emails,
-                    )
-
-
-                except Exception as exc:
-                    failed.append({
-                        "candidate_id": candidate_id,
-                        "round": round_info.get("round_number"),
-                        "reason": f"Calendar event creation failed: {exc}",
-                    })
-
             invited.append(candidate_id)
 
         except Exception as exc:

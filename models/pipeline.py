@@ -74,7 +74,7 @@ class SalaryRange(BaseModel):
     currency: str = "USD"
 
 
- class JobDescription(BaseModel):
+class JobDescription(BaseModel):
     raw_text: str
     title: str
     required_skills: list[str]

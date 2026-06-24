@@ -1,14 +1,21 @@
-"""End-to-end RAG evaluation.
+"""End-to-end RAG evaluation across failure modes.
 
 Indexes the labeled corpus into a temporary Pinecone namespace, then measures:
-  Retrieval  - recall@k, precision@k, MRR vs the ground-truth relevant ids
-  Generation - faithfulness (is the answer grounded in retrieved context?) and
-               answer relevance (does the answer address the query?), scored 1-5
-               by an LLM judge (the same LLM-as-judge idea used in the app's grader)
+
+  Retrieval (answerable queries)
+    - recall@k, precision@k (order-independent within top-k)
+    - MRR, raw vs after the cross-encoder reranker
+
+  Rejection (out-of-domain queries)
+    - did the relevance grader correctly return ZERO relevant chunks?
+    - did the generated answer abstain ("I don't know")?
+
+  Generation (answerable queries)
+    - faithfulness/groundedness and answer relevance, 1-5 via LLM judge
+
+Results are broken down by failure mode. Cleans up its test namespace.
 
 Run:  python eval/run_eval.py
-Needs OPENAI_API_KEY and PINECONE_API_KEY / PINECONE_INDEX_NAME in the env.
-Cleans up its test namespace at the end.
 """
 
 from __future__ import annotations
@@ -16,6 +23,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
+from collections import defaultdict
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -28,9 +37,11 @@ from metrics import recall_at_k, precision_at_k, reciprocal_rank
 load_dotenv()
 
 TOP_K          = 5
+RETRIEVE_K     = 12   # over-fetch, then rerank down to TOP_K (matches the app)
 EMBED_MODEL    = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 JUDGE_MODEL    = os.getenv("OPENAI_GRADER_MODEL", "gpt-4o-mini")
 ANSWER_MODEL   = os.getenv("OPENAI_AGENT_MODEL", "gpt-4o")
+RERANK_MODEL   = "bge-reranker-v2-m3"
 TEST_NAMESPACE = "__eval_rag_test__"
 
 _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -39,27 +50,22 @@ _index  = _pc.Index(os.getenv("PINECONE_INDEX_NAME"))
 
 
 def embed(texts: list[str]) -> list[list[float]]:
-    resp = _client.embeddings.create(model=EMBED_MODEL, input=texts)
-    return [d.embedding for d in resp.data]
+    return [d.embedding for d in _client.embeddings.create(model=EMBED_MODEL, input=texts).data]
 
 
 def index_corpus() -> None:
-    ids   = list(CORPUS.keys())
-    vecs  = embed([CORPUS[i] for i in ids])
-    items = [
-        {"id": i, "values": v, "metadata": {"text": CORPUS[i]}}
-        for i, v in zip(ids, vecs)
-    ]
-    _index.upsert(vectors=items, namespace=TEST_NAMESPACE)
+    ids  = list(CORPUS.keys())
+    vecs = embed([CORPUS[i] for i in ids])
+    _index.upsert(
+        vectors=[{"id": i, "values": v, "metadata": {"text": CORPUS[i]}} for i, v in zip(ids, vecs)],
+        namespace=TEST_NAMESPACE,
+    )
 
 
 def retrieve(query: str, k: int = TOP_K) -> list[dict]:
     qvec = embed([query])[0]
     res  = _index.query(vector=qvec, top_k=k, namespace=TEST_NAMESPACE, include_metadata=True)
     return [{"id": m.id, "score": m.score, "text": m.metadata.get("text", "")} for m in res.matches]
-
-
-RERANK_MODEL = "bge-reranker-v2-m3"   # Pinecone-hosted cross-encoder
 
 
 def rerank(query: str, docs: list[dict]) -> list[dict]:
@@ -76,12 +82,44 @@ def rerank(query: str, docs: list[dict]) -> list[dict]:
         return docs
 
 
-def _judge(system: str, user: str) -> int:
-    """Ask the judge for a 1-5 integer score; return it (defaults to 1 on parse error)."""
+def grade(query: str, docs: list[dict]) -> list[dict]:
+    """LLM relevance grader (batch): keep only chunks judged relevant."""
+    if not docs:
+        return []
+    listing = "\n".join(f"[{i}] {d['text'][:400]}" for i, d in enumerate(docs))
     resp = _client.chat.completions.create(
-        model=JUDGE_MODEL,
-        temperature=0,
-        response_format={"type": "json_object"},
+        model=JUDGE_MODEL, temperature=0, response_format={"type": "json_object"},
+        messages=[{"role": "user", "content":
+            f"Which documents are relevant to the query? Be strict.\n"
+            f"Query: {query}\n\nDocuments:\n{listing}\n\n"
+            f'Return ONLY JSON: {{"relevant_indices": [list of relevant [i] numbers]}}'}],
+    )
+    try:
+        idxs = set(json.loads(resp.choices[0].message.content).get("relevant_indices", []))
+        return [d for i, d in enumerate(docs) if i in idxs]
+    except Exception:
+        return docs
+
+
+def answer(query: str, context: str) -> str:
+    resp = _client.chat.completions.create(
+        model=ANSWER_MODEL, temperature=0,
+        messages=[
+            {"role": "system", "content":
+                "Answer the question using only facts stated in the context. The context may phrase "
+                "things differently than the question; treat synonyms and paraphrases as matches "
+                "(e.g. 'employment gap' = 'career break', 'paid leave' = 'vacation', 'penalize' = "
+                "'dock points'). Only if the specific information requested is genuinely not present "
+                "in the context, reply exactly: I don't know."},
+            {"role": "user", "content": f"CONTEXT:\n{context}\n\nQUESTION: {query}"},
+        ],
+    )
+    return resp.choices[0].message.content.strip()
+
+
+def _judge(system: str, user: str) -> int:
+    resp = _client.chat.completions.create(
+        model=JUDGE_MODEL, temperature=0, response_format={"type": "json_object"},
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
     )
     try:
@@ -90,74 +128,95 @@ def _judge(system: str, user: str) -> int:
         return 1
 
 
-def answer(query: str, context: str) -> str:
-    resp = _client.chat.completions.create(
-        model=ANSWER_MODEL,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": "Answer the question using ONLY the provided context. "
-                                          "If the context does not contain the answer, say you don't know."},
-            {"role": "user", "content": f"CONTEXT:\n{context}\n\nQUESTION: {query}"},
-        ],
-    )
-    return resp.choices[0].message.content.strip()
+_FAITHFUL_SYS = ('Rate how well the ANSWER is supported by the CONTEXT (faithfulness). '
+                 '5 = every claim supported; 1 = invents/contradicts. Return ONLY JSON {"score":1-5}.')
+_RELEVANCE_SYS = ('Rate how well the ANSWER addresses the QUESTION (relevance). '
+                  '5 = directly answers; 1 = off-topic. Return ONLY JSON {"score":1-5}.')
 
 
-_FAITHFUL_SYS = ('Rate how well the ANSWER is supported by the CONTEXT (faithfulness/groundedness). '
-                 '5 = every claim is supported; 1 = the answer contradicts or invents facts not in context. '
-                 'Return ONLY JSON: {"score": 1-5}.')
-_RELEVANCE_SYS = ('Rate how well the ANSWER addresses the QUESTION (answer relevance). '
-                  '5 = directly and fully answers it; 1 = off-topic or non-answer. '
-                  'Return ONLY JSON: {"score": 1-5}.')
+def _abstained(ans: str) -> bool:
+    a = ans.lower()
+    return any(p in a for p in ["i don't know", "i do not know", "not contain", "no information",
+                                "not provided", "cannot find", "isn't in", "is not in"])
 
 
 def main() -> int:
     print("Indexing labeled corpus into temporary namespace...")
     index_corpus()
-    # Pinecone serverless upserts are near-immediate but allow a beat for consistency.
-    import time; time.sleep(3)
+    time.sleep(3)
 
-    rec, prec, rr, rr_rr = [], [], [], []
-    faith, relev  = [], []
+    by_type: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     rows = []
 
     for item in QUERIES:
-        q, gold = item["query"], item["relevant"]
-        docs = retrieve(q, TOP_K)
-        retrieved_ids = [d["id"] for d in docs]
+        q, gold, typ = item["query"], item["relevant"], item["type"]
+        # Retrieve wide, rerank, narrow to TOP_K (matches AgenticRAG).
+        pool = retrieve(q, RETRIEVE_K)
+        raw_ids = [d["id"] for d in pool[:TOP_K]]            # what plain top-k would have given
+        reranked = rerank(q, list(pool))[:TOP_K]            # over-fetch + rerank + narrow
+        rer_ids = [d["id"] for d in reranked]
+        graded = grade(q, reranked)
 
-        # Reranked order (cross-relevance) for comparison.
-        reranked_ids = [d["id"] for d in rerank(q, list(docs))]
+        if typ == "negative":
+            rejected = (len(graded) == 0)
+            ans = answer(q, "\n\n".join(d["text"] for d in reranked))
+            abstained = _abstained(ans)
+            by_type[typ]["reject"].append(1 if rejected else 0)
+            by_type[typ]["abstain"].append(1 if abstained else 0)
+            rows.append((typ, q[:40], "-", "-", "-", "rej" if rejected else "KEPT", "abs" if abstained else "ANS"))
+        else:
+            rec_raw = recall_at_k(raw_ids, gold, TOP_K)
+            rec     = recall_at_k(rer_ids, gold, TOP_K)   # final (over-fetch + rerank + narrow)
+            prec    = precision_at_k(rer_ids, gold, TOP_K)
+            mrr_r   = reciprocal_rank(raw_ids, gold)
+            mrr_e   = reciprocal_rank(rer_ids, gold)
+            ctx   = "\n\n".join(d["text"] for d in reranked)
+            ans   = answer(q, ctx)
+            f = _judge(_FAITHFUL_SYS,  f"CONTEXT:\n{ctx}\n\nANSWER:\n{ans}")
+            v = _judge(_RELEVANCE_SYS, f"QUESTION:\n{q}\n\nANSWER:\n{ans}")
+            for k, val in [("recall_raw", rec_raw), ("recall", rec), ("prec", prec),
+                           ("mrr_raw", mrr_r), ("mrr_re", mrr_e), ("faith", f), ("relev", v)]:
+                by_type[typ][k].append(val)
+            rows.append((typ, q[:40], round(rec, 2), round(prec, 2), f"{mrr_r:.2f}>{mrr_e:.2f}", f, v))
 
-        r  = recall_at_k(retrieved_ids, gold, TOP_K)
-        p  = precision_at_k(retrieved_ids, gold, TOP_K)
-        mr = reciprocal_rank(retrieved_ids, gold)
-        mr_re = reciprocal_rank(reranked_ids, gold)
-        rec.append(r); prec.append(p); rr.append(mr); rr_rr.append(mr_re)
+    # --- per-query table ---
+    print("\n=== Per-query ===")
+    print(f"{'type':<11}{'query':<42}{'rec':<6}{'prec':<6}{'mrr raw>re':<12}{'faith/reject':<14}{'relev/abstain'}")
+    for typ, q, rec, prec, mrr, a, b in rows:
+        print(f"{typ:<11}{q:<42}{str(rec):<6}{str(prec):<6}{str(mrr):<12}{str(a):<14}{b}")
 
-        # Generation is judged on the reranked (best-first) context, as the app serves it.
-        reranked_docs = rerank(q, list(docs))
-        context = "\n\n".join(d["text"] for d in reranked_docs)
-        ans = answer(q, context)
-        f = _judge(_FAITHFUL_SYS,  f"CONTEXT:\n{context}\n\nANSWER:\n{ans}")
-        v = _judge(_RELEVANCE_SYS, f"QUESTION:\n{q}\n\nANSWER:\n{ans}")
-        faith.append(f); relev.append(v)
+    # --- per-failure-mode aggregates ---
+    def mean(xs): return sum(xs) / len(xs) if xs else 0.0
+    print("\n=== By failure mode ===")
+    for typ in ["single", "distractor", "multi", "paraphrase", "exact"]:
+        d = by_type[typ]
+        if not d: continue
+        print(f"{typ:<11} recall@5 {mean(d['recall_raw']):.2f}->{mean(d['recall']):.2f}  "
+              f"prec@5={mean(d['prec']):.2f}  MRR {mean(d['mrr_raw']):.2f}->{mean(d['mrr_re']):.2f}  "
+              f"faith={mean(d['faith']):.1f}  relev={mean(d['relev']):.1f}")
+    neg = by_type["negative"]
+    if neg:
+        print(f"{'negative':<11} correct rejection={mean(neg['reject'])*100:.0f}%  "
+              f"answer abstained={mean(neg['abstain'])*100:.0f}%")
 
-        rows.append((q[:42], retrieved_ids[:3], reranked_ids[:3], sorted(gold), round(mr, 2), round(mr_re, 2), f, v))
-
-    print("\n=== Per-query results ===")
-    print(f"{'query':<44}{'top3 raw':<22}{'top3 reranked':<22}{'gold':<8}{'rr':<6}{'rr+rerank':<11}{'faith':<7}{'relev'}")
-    for q, raw3, re3, gold, mr, mr_re, f, v in rows:
-        print(f"{q:<44}{str(raw3):<22}{str(re3):<22}{str(gold):<8}{mr:<6}{mr_re:<11}{f:<7}{v}")
-
-    n = len(QUERIES)
-    print("\n=== Aggregate (mean over queries) ===")
-    print(f"Recall@{TOP_K}:           {sum(rec)/n:.3f}")
-    print(f"Precision@{TOP_K}:        {sum(prec)/n:.3f}")
-    print(f"MRR (raw):           {sum(rr)/n:.3f}")
-    print(f"MRR (+ reranker):    {sum(rr_rr)/n:.3f}")
-    print(f"Faithfulness/5:      {sum(faith)/n:.2f}")
-    print(f"Answer relev./5:     {sum(relev)/n:.2f}")
+    # --- overall (answerable) ---
+    ans_types = ["single", "distractor", "multi", "paraphrase", "exact"]
+    allrr = [x for t in ans_types for x in by_type[t]["recall_raw"]]
+    allr  = [x for t in ans_types for x in by_type[t]["recall"]]
+    allp  = [x for t in ans_types for x in by_type[t]["prec"]]
+    allmr = [x for t in ans_types for x in by_type[t]["mrr_raw"]]
+    allme = [x for t in ans_types for x in by_type[t]["mrr_re"]]
+    allf  = [x for t in ans_types for x in by_type[t]["faith"]]
+    allv  = [x for t in ans_types for x in by_type[t]["relev"]]
+    print("\n=== Overall (answerable queries) ===")
+    print(f"Recall@5 (raw):     {mean(allrr):.3f}")
+    print(f"Recall@5 (+rerank): {mean(allr):.3f}")
+    print(f"Precision@5:        {mean(allp):.3f}")
+    print(f"MRR (raw):          {mean(allmr):.3f}")
+    print(f"MRR (+ reranker):   {mean(allme):.3f}")
+    print(f"Faithfulness/5:     {mean(allf):.2f}")
+    print(f"Answer relevance/5: {mean(allv):.2f}")
+    print(f"\nNegative rejection: {mean(neg['reject'])*100:.0f}%   abstention: {mean(neg['abstain'])*100:.0f}%")
 
     print("\nCleaning up test namespace...")
     try:

@@ -24,6 +24,7 @@ except Exception:
 
 
 TOP_K                  = 5
+RETRIEVE_K             = 12   # over-fetch, then rerank down to TOP_K
 MIN_RELEVANT_DOCS      = 1
 MAX_RETRIEVAL_ATTEMPTS = 2
 CHUNK_SIZE             = 500
@@ -120,7 +121,7 @@ class AgenticRAG:
 
         results = self._index.query(
             vector=query_vector,
-            top_k=TOP_K,
+            top_k=RETRIEVE_K,
             namespace=namespace,
             include_metadata=True,
         )
@@ -271,7 +272,7 @@ class AgenticRAG:
             raw_docs = self._retrieve(rewritten, namespace)
 
             steps.append(f"rerank (attempt {attempt})")
-            raw_docs = self._rerank(query, raw_docs)
+            raw_docs = self._rerank(query, raw_docs)[:TOP_K]
 
             steps.append(f"grade (attempt {attempt})")
             relevant_docs = self._grade_docs(query, raw_docs)

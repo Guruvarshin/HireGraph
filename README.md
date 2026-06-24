@@ -59,9 +59,9 @@ The `AgenticRAG` class implements a multi-step retrieval loop:
 
 1. Decide: should retrieval happen for this query?
 2. Rewrite: reformulate the query for better vector search
-3. Retrieve: query Pinecone top-k
-4. Rerank: reorder the top-k with a cross-encoder (`bge-reranker-v2-m3`, served by Pinecone inference) so the chunk that actually answers the query is ranked first
-5. Grade: an LLM scores each retrieved chunk for relevance
+3. Retrieve: query Pinecone for a wide candidate pool (top-k 12)
+4. Rerank: reorder with a cross-encoder (`bge-reranker-v2-m3`, served by Pinecone inference) and narrow to the top 5, so chunks the embedding ranked lower but that actually answer the query are pulled in
+5. Grade: an LLM scores each retained chunk for relevance
 6. Retry: if results are weak, rewrite with different terminology
 7. Fallback: web search via Tavily if the vector DB returns nothing (also graded; gated per query so proprietary rubric lookups never fall back to generic web data)
 
@@ -73,15 +73,19 @@ The `eval/` folder contains a runnable RAG evaluation against a labeled dataset.
 python eval/run_eval.py
 ```
 
-Latest run (retrieval near-misses fixed by the cross-encoder reranker):
+Latest run over 27 documents and 20 queries spanning all failure modes (single, distractor, multi-relevant, paraphrase, exact-term, out-of-domain):
 
 ```
-Recall@5:         1.000
-MRR (raw):        0.833
-MRR (+ reranker): 1.000
-Faithfulness/5:   5.00
-Answer relevance: 5.00
+Recall@5 (raw):      0.833
+Recall@5 (+ rerank): 0.979
+MRR (raw):           0.742
+MRR (+ reranker):    1.000
+Faithfulness/5:      4.50
+Answer relevance/5:  4.75
+Out-of-domain:       100% rejection, 100% abstention (no hallucination)
 ```
+
+Retrieving a wide pool then reranking improves recall (not just ranking) by pulling in relevant chunks the embedding left outside the top 5; out-of-domain queries are correctly rejected rather than answered.
 
 ## Email and Calendar
 

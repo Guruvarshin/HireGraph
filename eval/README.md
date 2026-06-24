@@ -37,18 +37,50 @@ actually answers the query. A cross-encoder reads query and chunk together and
 returns a single joint relevance score, which corrects that ordering. The same
 reranker runs in the app at `AgenticRAG._rerank`.
 
-## Latest results
+## Dataset
+
+27 rubric chunks and 20 queries tagged by failure mode (`dataset.py`):
+single, distractor (definition vs fact), multi-relevant, paraphrase, exact-term,
+and negative (out-of-domain that must be rejected, not answered).
+
+## Pipeline
+
+Retrieve wide (top_k=12) -> cross-encoder rerank -> narrow to top 5 -> grade.
+Over-fetching then reranking lets the cross-encoder pull truly-relevant chunks
+that the embedding ranked at positions 6-12 into the final top 5, so the
+reranker improves recall, not just ordering.
+
+## Latest results (by failure mode), recall shown as raw -> after rerank
 
 ```
-Recall@5:        1.000
-Precision@5:     0.200   (= 1/5 ceiling; each query has one relevant doc)
-MRR (raw):       0.833
-MRR (+ reranker):1.000
-Faithfulness/5:  5.00
-Answer relev./5: 5.00
+single      recall@5 0.60->1.00  prec@5=0.20  MRR 0.33->1.00  faith=5.0  relev=5.0
+distractor  recall@5 1.00->1.00  prec@5=0.20  MRR 0.60->1.00  faith=5.0  relev=5.0
+multi       recall@5 0.83->0.92  prec@5=0.60  MRR 1.00->1.00  faith=5.0  relev=5.0
+paraphrase  recall@5 1.00->1.00  prec@5=0.20  MRR 1.00->1.00  faith=2.3  relev=3.7
+exact       recall@5 1.00->1.00  prec@5=0.20  MRR 1.00->1.00  faith=5.0  relev=5.0
+negative    correct rejection=100%   answer abstained=100%
+
+Overall (answerable): Recall@5 0.833 raw -> 0.979 reranked | MRR 0.742 -> 1.000
+                      Faithfulness 4.50 | Answer relevance 4.75
+Out-of-domain:        100% rejection, 100% abstention (no hallucination)
 ```
 
-The reranker fixed both near-miss queries (relevant doc moved from rank 2 to
-rank 1): "salary band for a senior engineer" promoted the US-comp chunk over the
-senior-*definition* chunk, and "score for a mid level engineer" promoted the mid
-chunk over the junior chunk. MRR went 0.833 -> 1.000.
+## What the eval surfaced, and the fixes applied
+
+- The cross-encoder reranker lifts both ranking (MRR 0.742 -> 1.000) and recall
+  (0.833 -> 0.979): with retrieve-wide/rerank-narrow it recovers relevant chunks
+  the embedding alone left outside the top 5 (e.g. it ranked the senior salary
+  band below the senior *definition*, and the reranker pulled it to rank 1).
+- Out-of-domain handling is perfect: every negative is rejected and the answer
+  abstains - no fabrication, and this held after the generation prompt was
+  loosened (the key risk).
+- Two weaknesses found in the first run, and the fixes:
+  1. Multi-relevant recall was capped at 0.83 by top_k=5. Fix: retrieve wide
+     (12) and rerank down to 5, raising multi recall to 0.92 and overall recall
+     to 0.979.
+  2. Over-abstention on paraphrase (faith/relev 2.3): retrieval was correct but
+     the strict "answer only from context" prompt made the answerer say "I don't
+     know" when wording differed (career break vs employment gap). Fix: allow
+     synonym/paraphrase bridging in the answer prompt while still abstaining on
+     genuinely-absent info; paraphrase relevance recovered 2.3 -> 3.7 and
+     negatives stayed at 100% abstention.

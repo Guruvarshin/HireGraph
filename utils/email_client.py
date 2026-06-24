@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import smtplib
+import socket
+import ssl
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.mime.base import MIMEBase
@@ -17,6 +19,48 @@ _GMAIL_ADDRESS      = os.getenv("GMAIL_ADDRESS", "")
 _GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 _SMTP_HOST          = "smtp.gmail.com"
 _SMTP_PORT          = 587
+_SMTP_SSL_PORT      = 465
+
+
+def _smtp_connect() -> smtplib.SMTP:
+    """Open an authenticated Gmail SMTP connection, forcing IPv4.
+
+    Many cloud hosts (Railway/Render containers) have broken IPv6 egress, which
+    makes smtplib raise '[Errno 101] Network is unreachable' when Gmail's DNS
+    resolves to an IPv6 address. Resolving to IPv4 ourselves avoids that. We try
+    STARTTLS on 587 first, then implicit SSL on 465 as a fallback.
+    """
+    def _ipv4(host: str) -> str:
+        return socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+
+    ipv4 = _ipv4(_SMTP_HOST)
+    last_exc: Exception | None = None
+
+    # Attempt 1: STARTTLS on 587
+    try:
+        server = smtplib.SMTP(timeout=30)
+        server.connect(ipv4, _SMTP_PORT)
+        server._host = _SMTP_HOST            # keep hostname for TLS cert verification
+        server.starttls(context=ssl.create_default_context())
+        server.login(_GMAIL_ADDRESS, _GMAIL_APP_PASSWORD)
+        return server
+    except Exception as exc:
+        last_exc = exc
+
+    # Attempt 2: implicit SSL on 465
+    try:
+        server = smtplib.SMTP_SSL(timeout=30, context=ssl.create_default_context())
+        server._host = _SMTP_HOST
+        server.connect(ipv4, _SMTP_SSL_PORT)
+        server.login(_GMAIL_ADDRESS, _GMAIL_APP_PASSWORD)
+        return server
+    except Exception as exc:
+        last_exc = exc
+
+    raise RuntimeError(
+        f"Could not open Gmail SMTP connection (tried 587 STARTTLS and 465 SSL): {last_exc}. "
+        "If this is a deployed host, it may block outbound SMTP ports — use an HTTP email API instead."
+    ) from last_exc
 
 
 def _send_email(
@@ -60,10 +104,14 @@ def _send_email(
         msg.attach(part)
 
     try:
-        with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT, timeout=20) as server:
-            server.starttls()
-            server.login(_GMAIL_ADDRESS, _GMAIL_APP_PASSWORD)
+        server = _smtp_connect()
+        try:
             server.sendmail(_GMAIL_ADDRESS, [to_email], msg.as_string())
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                pass
     except Exception as exc:
         raise RuntimeError(f"Gmail SMTP send failed → {to_email}: {exc}") from exc
 

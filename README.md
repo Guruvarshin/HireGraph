@@ -21,6 +21,7 @@ Offer Drafting -> Offer Review (human) -> Send Offers
 | LLM | GPT-4o (agents), GPT-4o-mini (RAG grader/rewriter) |
 | Vector DB | Pinecone (per-user namespaces, multi-tenant) |
 | Embeddings | OpenAI text-embedding-3-small |
+| Reranker | Cross-encoder bge-reranker-v2-m3 (Pinecone inference) |
 | Backend | FastAPI |
 | Frontend | Next.js 15 |
 | Database | MongoDB Atlas (pipeline state and LangGraph checkpoints) |
@@ -59,9 +60,28 @@ The `AgenticRAG` class implements a multi-step retrieval loop:
 1. Decide: should retrieval happen for this query?
 2. Rewrite: reformulate the query for better vector search
 3. Retrieve: query Pinecone top-k
-4. Grade: an LLM scores each retrieved chunk for relevance
-5. Retry: if results are weak, rewrite with different terminology
-6. Fallback: web search via Tavily if the vector DB returns nothing
+4. Rerank: reorder the top-k with a cross-encoder (`bge-reranker-v2-m3`, served by Pinecone inference) so the chunk that actually answers the query is ranked first
+5. Grade: an LLM scores each retrieved chunk for relevance
+6. Retry: if results are weak, rewrite with different terminology
+7. Fallback: web search via Tavily if the vector DB returns nothing (also graded; gated per query so proprietary rubric lookups never fall back to generic web data)
+
+## Evaluation
+
+The `eval/` folder contains a runnable RAG evaluation against a labeled dataset. It indexes a small corpus into a temporary Pinecone namespace, measures retrieval quality (recall@k, precision@k, MRR vs ground-truth relevant ids) and generation quality (faithfulness and answer relevance via an LLM judge), then cleans up.
+
+```
+python eval/run_eval.py
+```
+
+Latest run (retrieval near-misses fixed by the cross-encoder reranker):
+
+```
+Recall@5:         1.000
+MRR (raw):        0.833
+MRR (+ reranker): 1.000
+Faithfulness/5:   5.00
+Answer relevance: 5.00
+```
 
 ## Email and Calendar
 
@@ -78,6 +98,7 @@ The pipeline is instrumented with LangSmith. Because all calls run on LangChain 
 ```
 agents/          Five LangGraph agent nodes
 api/             FastAPI routes (auth, pipeline, rag, setup)
+eval/            RAG evaluation harness (recall@k, precision@k, MRR, LLM-judge)
 graph/           LangGraph pipeline definition and checkpoint config
 memory/          AgenticRAG, MongoDB checkpointer, database helpers
 models/          Pydantic models for all pipeline state types

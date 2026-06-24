@@ -28,6 +28,8 @@ MIN_RELEVANT_DOCS      = 1
 MAX_RETRIEVAL_ATTEMPTS = 2
 CHUNK_SIZE             = 500
 CHUNK_OVERLAP          = 100
+RERANK_ENABLED         = True
+RERANK_MODEL           = "bge-reranker-v2-m3"   # Pinecone-hosted cross-encoder
 
 
 def get_tenant_id(user_id: str) -> str:
@@ -173,6 +175,36 @@ class AgenticRAG:
         return relevant
 
 
+    @traceable(name="rag.rerank", run_type="chain")
+    def _rerank(self, query: str, docs: list[dict]) -> list[dict]:
+        """Cross-encoder rerank via Pinecone's hosted reranker (bge-reranker-v2-m3).
+
+        Embedding retrieval is a bi-encoder: it scores the query and each chunk
+        independently, so it can rank a topically-similar chunk above the one that
+        actually answers the query. A cross-encoder reads the query and chunk
+        together and outputs a single joint relevance score, which is sharper.
+        We rerank the retrieved chunks and reorder best-first. Falls back to the
+        original order on any failure (network, model, mismatch).
+        """
+        if not RERANK_ENABLED or len(docs) <= 1:
+            return docs
+        try:
+            result = self._pc.inference.rerank(
+                model=RERANK_MODEL,
+                query=query,
+                documents=[d.get("text", "") for d in docs],
+                top_n=len(docs),
+            )
+            reordered = []
+            for item in result.data:
+                doc = docs[item.index]
+                doc["rerank_score"] = item.score
+                reordered.append(doc)
+            return reordered
+        except Exception:
+            return docs
+
+
     def _web_search_fallback(self, query: str, namespace: str) -> list[dict]:
         tavily_key = os.getenv("TAVILY_API_KEY")
         if not tavily_key:
@@ -237,6 +269,9 @@ class AgenticRAG:
 
             steps.append(f"retrieve (attempt {attempt})")
             raw_docs = self._retrieve(rewritten, namespace)
+
+            steps.append(f"rerank (attempt {attempt})")
+            raw_docs = self._rerank(query, raw_docs)
 
             steps.append(f"grade (attempt {attempt})")
             relevant_docs = self._grade_docs(query, raw_docs)

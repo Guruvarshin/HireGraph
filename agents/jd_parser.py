@@ -94,7 +94,12 @@ def run_jd_parser(state: PipelineState) -> dict:
 
     user_id: str = state.get("user_id", "")
     # Optional RAG context
-    rubric_result = rag.query("hiring standards seniority expectations", namespace="company_rubrics", user_id=user_id)
+    rubric_result = rag.query(
+        "hiring standards seniority expectations",
+        namespace="company_rubrics",
+        user_id=user_id,
+        allow_web_fallback=False,  # rubric is proprietary; generic web results would mislead
+    )
     rubric_context = ""
     if rubric_result.has_context():
         rubric_context = "\n\nCOMPANY RUBRIC CONTEXT:\n" + rubric_result.context

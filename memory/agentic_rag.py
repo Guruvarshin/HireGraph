@@ -208,16 +208,26 @@ class AgenticRAG:
 
 
     @traceable(name="agentic_rag.query", run_type="chain")
-    def query(self, query: str, namespace: str, user_id: str = "") -> RAGResult:
+    def query(
+        self,
+        query: str,
+        namespace: str,
+        user_id: str = "",
+        allow_web_fallback: bool = True,
+    ) -> RAGResult:
+        """Retrieve grounded context for a query.
+
+        allow_web_fallback: when the knowledge base has nothing relevant, fall
+        back to a web search. Appropriate for public data (e.g. salary bands),
+        but should be False for proprietary lookups (e.g. a company's hiring
+        rubric), where generic web results would be misleading.
+        """
         if user_id:
             namespace = tenant_namespace(user_id, namespace)
-        steps = []
+        steps = ["decide"]
 
-        # For market_data, always retrieve - never skip. Salary data must be looked up.
-        if namespace != "market_data":
-            steps.append("decide")
-            if not self._should_retrieve(query):
-                return RAGResult(context="", steps_taken=["decide -> skip retrieval"])
+        if not self._should_retrieve(query):
+            return RAGResult(context="", steps_taken=["decide -> skip retrieval"])
 
         relevant_docs: list[dict] = []
 
@@ -236,15 +246,26 @@ class AgenticRAG:
 
         warning = None
         if len(relevant_docs) < MIN_RELEVANT_DOCS:
+            if not allow_web_fallback:
+                warning = (
+                    f"No relevant documents found in namespace '{namespace}' "
+                    f"(web fallback disabled for this query)."
+                )
+                return RAGResult(context="", warning=warning, steps_taken=steps)
+
             steps.append("fallback -> web search")
             fallback_docs = self._web_search_fallback(query, namespace)
+
+            # Grade web results too - Tavily ranking is not relevance for our query.
+            steps.append("grade fallback")
+            fallback_docs = self._grade_docs(query, fallback_docs)
 
             if fallback_docs:
                 relevant_docs = fallback_docs
             else:
                 warning = (
                     f"No relevant documents found in namespace '{namespace}' "
-                    f"and web search {'returned no results' if os.getenv('TAVILY_API_KEY') else 'unavailable (TAVILY_API_KEY not set)'}."
+                    f"and web search {'returned nothing relevant' if os.getenv('TAVILY_API_KEY') else 'unavailable (TAVILY_API_KEY not set)'}."
                 )
                 return RAGResult(context="", warning=warning, steps_taken=steps)
 

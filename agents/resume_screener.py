@@ -169,6 +169,7 @@ def run_resume_screener(state: PipelineState) -> dict:
         query=f"scoring criteria for {jd.seniority} {jd.title}",
         namespace="company_rubrics",
         user_id=user_id,
+        allow_web_fallback=False,  # rubric is proprietary; generic web results would mislead
     )
     rubric_context = ""
     if rubric_result.has_context():

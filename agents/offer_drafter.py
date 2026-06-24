@@ -183,6 +183,7 @@ def run_offer_drafter(state: PipelineState) -> dict:
         f"{jd.location} {jd.remote_policy}"
     )
     user_id: str = state.get("user_id", "")
+    # Salary is public market data, so web fallback (default on) is appropriate here.
     market_result = rag.query(query=market_query, namespace="company_rubrics", user_id=user_id)
 
     if market_result.has_context():

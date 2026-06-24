@@ -13,6 +13,17 @@ from pinecone import Pinecone
 load_dotenv()
 
 
+# LangSmith span decorator. Falls back to a no-op if langsmith isn't installed,
+# so the code never breaks without observability configured.
+try:
+    from langsmith import traceable
+except Exception:  # pragma: no cover
+    def traceable(*d_args, **d_kwargs):
+        def _wrap(fn):
+            return fn
+        return _wrap(d_args[0]) if d_args and callable(d_args[0]) else _wrap
+
+
 TOP_K                  = 5
 MIN_RELEVANT_DOCS      = 1
 MAX_RETRIEVAL_ATTEMPTS = 2
@@ -67,6 +78,7 @@ class AgenticRAG:
         self._index = self._pc.Index(os.getenv("PINECONE_INDEX_NAME"))
 
 
+    @traceable(name="rag.decide_retrieve", run_type="chain")
     def _should_retrieve(self, query: str) -> bool:
         from langchain_core.messages import HumanMessage
         prompt = [HumanMessage(content=(
@@ -79,6 +91,7 @@ class AgenticRAG:
         return answer.startswith("Y")
 
 
+    @traceable(name="rag.rewrite_query", run_type="chain")
     def _rewrite_query(self, query: str, attempt: int = 1) -> str:
         style_instruction = (
             "Make it dense with domain-specific keywords and technical terms."
@@ -100,6 +113,7 @@ class AgenticRAG:
         return response.content.strip()
 
 
+    @traceable(name="rag.pinecone_retrieve", run_type="retriever")
     def _retrieve(self, rewritten_query: str, namespace: str) -> list[dict]:
         query_vector = self.embeddings.embed_query(rewritten_query)
 
@@ -122,6 +136,7 @@ class AgenticRAG:
         return docs
 
 
+    @traceable(name="rag.grade_docs", run_type="chain")
     def _grade_docs(self, query: str, docs: list[dict]) -> list[dict]:
         if not docs:
             return []
@@ -193,6 +208,7 @@ class AgenticRAG:
             return []
 
 
+    @traceable(name="agentic_rag.query", run_type="chain")
     def query(self, query: str, namespace: str, user_id: str = "") -> RAGResult:
         if user_id:
             namespace = tenant_namespace(user_id, namespace)

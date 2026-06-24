@@ -15,6 +15,7 @@ langchain-community
 langchain-tavily
 langgraph
 langgraph-checkpoint-mongodb
+langsmith
 
 openai
 tiktoken

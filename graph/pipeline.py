@@ -162,7 +162,14 @@ pipeline = _build_pipeline()
 def get_config(thread_id: str) -> dict:
 
 
-    return {"configurable": {"thread_id": thread_id}}
+    # `configurable.thread_id` keys the LangGraph checkpoint.
+    # `metadata` + `tags` are attached to LangSmith traces so a run can be
+    # filtered by thread_id (e.g. to debug one specific hiring pipeline).
+    return {
+        "configurable": {"thread_id": thread_id},
+        "metadata":     {"thread_id": thread_id},
+        "tags":         ["hiregraph", "pipeline"],
+    }
 
 
 def start_pipeline(initial_state: PipelineState) -> dict:

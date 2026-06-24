@@ -123,7 +123,7 @@ export default function FeedbackForm({ candidate, plan, feedback, onChange }) {
                 </p>
                 <p className="text-small text-muted" style={{ margin: 0 }}>{round.duration_minutes} min</p>
               </div>
-              {/* Rejected-after toggle — only show on conducted rounds */}
+              {/* Rejected-after toggle - only show on conducted rounds */}
               {!isSkipped && (
                 <button
                   type="button"
@@ -135,14 +135,14 @@ export default function FeedbackForm({ candidate, plan, feedback, onChange }) {
                     color: isRejectionPoint ? "#dc2626" : "#64748b",
                     cursor: "pointer", flexShrink: 0, marginLeft: "0.75rem",
                   }}
-                  title="Mark candidate as rejected after this round — subsequent rounds won't be evaluated"
+                  title="Mark candidate as rejected after this round - subsequent rounds won't be evaluated"
                 >
                   {isRejectionPoint ? "✗ Rejected here (undo)" : "Rejected after this round?"}
                 </button>
               )}
             </div>
 
-            {/* Round body — only for conducted rounds */}
+            {/* Round body - only for conducted rounds */}
             {!isSkipped && (
               <div style={{ padding: "0 1rem 1rem" }}>
                 <div style={{ marginBottom: "0.75rem" }}>

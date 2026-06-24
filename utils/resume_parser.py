@@ -58,7 +58,7 @@ _PARSE_PROMPT = """\
 You are a resume parser. The user will provide raw text extracted from a resume (possibly messy due to PDF formatting).
 
 Your job:
-1. Clean up the text — fix broken words, remove duplicate whitespace, restore logical reading order.
+1. Clean up the text - fix broken words, remove duplicate whitespace, restore logical reading order.
 2. Extract the candidate's full name and email address.
 
 Return ONLY valid JSON with exactly this structure:
@@ -69,7 +69,7 @@ Return ONLY valid JSON with exactly this structure:
 }
 
 Rules:
-- clean_text must contain the FULL resume content — do not summarise or truncate.
+- clean_text must contain the FULL resume content - do not summarise or truncate.
 - Preserve all job titles, dates, skills, education, and achievements.
 - name and email may be null if genuinely not present in the text.
 """
@@ -112,6 +112,6 @@ def _ai_parse(raw_text: str, filename: str) -> tuple[str, str, str]:
 
 
 def _name_from_filename(filename: str) -> str:
-    """e.g. 'john_doe_resume.pdf' → 'john doe resume'"""
+    """e.g. 'john_doe_resume.pdf' -> 'john doe resume'"""
     stem = filename.rsplit(".", 1)[0] if "." in filename else filename
     return stem.replace("_", " ").replace("-", " ").strip() or filename

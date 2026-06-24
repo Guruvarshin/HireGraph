@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="HireGraph — AI Recruiting Pipeline",
+    title="HireGraph - AI Recruiting Pipeline",
     description=(
         "Multi-agent recruiting pipeline with human-in-the-loop checkpoints. "
         "Automates JD parsing, resume screening, interview planning, "

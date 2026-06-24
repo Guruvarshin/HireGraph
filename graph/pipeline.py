@@ -77,7 +77,7 @@ def _send_offers(state: PipelineState) -> dict:
         candidate_name: str = candidate.get("name", candidate_id)
 
         if not candidate_email:
-            errors.append(f"No email address for candidate {candidate_id} — skipped.")
+            errors.append(f"No email address for candidate {candidate_id} - skipped.")
             updated_drafts.append({**draft, "email_status": EmailStatus.FAILED})
             continue
 
@@ -162,9 +162,7 @@ pipeline = _build_pipeline()
 def get_config(thread_id: str) -> dict:
 
 
-    # `configurable.thread_id` keys the LangGraph checkpoint.
-    # `metadata` + `tags` are attached to LangSmith traces so a run can be
-    # filtered by thread_id (e.g. to debug one specific hiring pipeline).
+    # thread_id keys the checkpoint; metadata and tags surface in LangSmith.
     return {
         "configurable": {"thread_id": thread_id},
         "metadata":     {"thread_id": thread_id},

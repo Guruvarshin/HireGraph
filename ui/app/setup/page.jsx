@@ -78,7 +78,7 @@ export default function SetupPage() {
       window.history.replaceState({}, "", "/setup");
     }
 
-    // checkGmail first — it confirms whether we have a real email identity.
+    // checkGmail first - it confirms whether we have a real email identity.
     // Only call checkRubrics after, so getRecruiterId() returns the email not a UUID.
     checkGmail().then(() => checkRubrics());
   }, []);
@@ -122,7 +122,7 @@ export default function SetupPage() {
         localStorage.setItem(RUBRICS_KEY, "true");
       }
     } catch {
-      // silently ignore — rubric check is best-effort
+      // silently ignore - rubric check is best-effort
     }
   };
 
@@ -190,7 +190,7 @@ export default function SetupPage() {
         </div>
       )}
 
-      {/* Step 1 — Gmail + Profile */}
+      {/* Step 1 - Gmail + Profile */}
       <Step number="1" title="Connect your Google account" done={gmailConnected && profileSaved}>
         {!gmailConnected ? (
           <>
@@ -247,7 +247,7 @@ export default function SetupPage() {
         )}
       </Step>
 
-      {/* Step 2 — Company rubric (optional) */}
+      {/* Step 2 - Company rubric (optional) */}
       <Step number="2" title="Upload company hiring rubric (optional)" done={rubricsUploaded}>
         <p className="text-small text-muted" style={{ marginBottom: "1rem" }}>
           Upload your hiring standards, seniority levels, interview process, and salary/compensation bands.

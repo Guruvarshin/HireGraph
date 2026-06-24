@@ -125,7 +125,7 @@ export default function RootLayout({ children }) {
           color: "var(--gray-400)", fontSize: "0.78rem",
           borderTop: "1px solid var(--border-light)",
         }}>
-          HireGraph © {new Date().getFullYear()} — AI Recruiting Pipeline
+          HireGraph © {new Date().getFullYear()} - AI Recruiting Pipeline
         </footer>
       </body>
     </html>

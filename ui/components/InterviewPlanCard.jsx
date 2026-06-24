@@ -22,7 +22,7 @@ function partsToIso(date, time) {
   return new Date(istMs - IST_OFFSET_MS).toISOString();
 }
 
-// 24-hour half-hour slots — IST
+// 24-hour half-hour slots - IST
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const h = String(Math.floor(i / 2)).padStart(2, "0");
   const m = i % 2 === 0 ? "00" : "30";
@@ -128,7 +128,7 @@ export default function InterviewPlanCard({ candidate, plan, onUpdatePlan, onApp
         </p>
       </div>
 
-      {/* Candidate email — only shown if missing */}
+      {/* Candidate email - only shown if missing */}
       {needsCandidateEmail && (
         <div style={{
           marginBottom: "1.25rem", padding: "1rem",
@@ -202,7 +202,7 @@ export default function InterviewPlanCard({ candidate, plan, onUpdatePlan, onApp
               {isExpanded && (
                 <div style={{ padding: "1.25rem", borderTop: "1px solid #e5e7eb" }}>
 
-                  {/* Date + Time — side by side */}
+                  {/* Date + Time - side by side */}
                   <div style={{ marginBottom: "1.25rem" }}>
                     <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem" }}>
                       Date & Time <span style={{ color: "#dc2626" }}>*</span>{" "}

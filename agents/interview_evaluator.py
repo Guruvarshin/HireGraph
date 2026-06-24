@@ -35,7 +35,7 @@ def _format_feedback(feedback: dict) -> str:
     lines = [f"Candidate ID: {feedback.get('candidate_id', 'unknown')}"]
     for rf in feedback.get("round_feedbacks", []):
         lines.append(
-            f"\nRound {rf.get('round_number')} — Interviewer: {rf.get('interviewer_name')}"
+            f"\nRound {rf.get('round_number')} - Interviewer: {rf.get('interviewer_name')}"
             f"\n  Recommendation: {rf.get('recommendation')}"
             f"\n  Technical Score (1-5): {rf.get('technical_score')}"
             f"\n  Communication Score (1-5): {rf.get('communication_score')}"

@@ -179,7 +179,7 @@ export default function OfferCard({ candidate, offer, onUpdate, onApprove }) {
         </p>
       </div>
 
-      {/* Offer Letter — editable */}
+      {/* Offer Letter - editable */}
       <div style={{ marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
           <h4 style={{ fontSize: "0.875rem", fontWeight: "600", margin: 0 }}>Offer Letter</h4>

@@ -13,11 +13,10 @@ from pinecone import Pinecone
 load_dotenv()
 
 
-# LangSmith span decorator. Falls back to a no-op if langsmith isn't installed,
-# so the code never breaks without observability configured.
+# LangSmith span decorator, with a no-op fallback when langsmith is absent.
 try:
     from langsmith import traceable
-except Exception:  # pragma: no cover
+except Exception:
     def traceable(*d_args, **d_kwargs):
         def _wrap(fn):
             return fn
@@ -214,11 +213,11 @@ class AgenticRAG:
             namespace = tenant_namespace(user_id, namespace)
         steps = []
 
-        # For market_data, always retrieve — never skip. Salary data must be looked up.
+        # For market_data, always retrieve - never skip. Salary data must be looked up.
         if namespace != "market_data":
             steps.append("decide")
             if not self._should_retrieve(query):
-                return RAGResult(context="", steps_taken=["decide → skip retrieval"])
+                return RAGResult(context="", steps_taken=["decide -> skip retrieval"])
 
         relevant_docs: list[dict] = []
 
@@ -237,7 +236,7 @@ class AgenticRAG:
 
         warning = None
         if len(relevant_docs) < MIN_RELEVANT_DOCS:
-            steps.append("fallback → web search")
+            steps.append("fallback -> web search")
             fallback_docs = self._web_search_fallback(query, namespace)
 
             if fallback_docs:

@@ -7,16 +7,10 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-# Email is sent via the Brevo (Sendinblue) HTTP API over HTTPS (port 443).
-# Cloud hosts like Railway block outbound SMTP ports (25/465/587), so raw SMTP
-# hangs and times out there — an HTTP API sidesteps that entirely.
-# Brevo "single sender verification" lets us send FROM a Gmail address to any
-# recipient without owning a domain and without Google verification.
-#   1. Sign up at https://www.brevo.com  (free, 300 emails/day)
-#   2. Senders & IP → verify your sender email (the GMAIL_ADDRESS below)
-#   3. SMTP & API → API Keys → create a key → set BREVO_API_KEY
+# Sends email through the Brevo HTTP API (HTTPS), since cloud hosts commonly
+# block outbound SMTP ports. GMAIL_ADDRESS must be a verified Brevo sender.
 _BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
-_SENDER_EMAIL  = os.getenv("GMAIL_ADDRESS", "")          # must be a verified Brevo sender
+_SENDER_EMAIL  = os.getenv("GMAIL_ADDRESS", "")
 _SENDER_NAME   = os.getenv("EMAIL_SENDER_NAME", "HireGraph")
 _BREVO_URL     = "https://api.brevo.com/v3/smtp/email"
 
@@ -45,7 +39,7 @@ def _send_email(
     if reply_to:
         payload["replyTo"] = {"email": reply_to}
 
-    # .ics calendar attachments — Brevo wants base64 content + filename
+    # .ics calendar attachments - Brevo wants base64 content + filename
     attachments = []
     for filename, ics_text in (ics_attachments or []):
         encoded = base64.b64encode(ics_text.encode("utf-8")).decode("utf-8")
@@ -65,11 +59,11 @@ def _send_email(
             timeout=30,
         )
     except Exception as exc:
-        raise RuntimeError(f"Email send failed → {to_email}: {exc}") from exc
+        raise RuntimeError(f"Email send failed -> {to_email}: {exc}") from exc
 
     if resp.status_code not in (200, 201):
         raise RuntimeError(
-            f"Email send failed → {to_email}: HTTP {resp.status_code} {resp.text}"
+            f"Email send failed -> {to_email}: HTTP {resp.status_code} {resp.text}"
         )
 
     try:
@@ -128,7 +122,7 @@ def send_offer_email(
     body_html = offer_letter_text.replace("\n", "<br>")
     return _send_email(
         to_email=to_email,
-        subject=f"Job Offer — {candidate_name}",
+        subject=f"Job Offer - {candidate_name}",
         body_html=body_html,
         reply_to=user_id,
     )
@@ -145,7 +139,7 @@ def send_interview_invite(
         f"<li><strong>Round {r.get('round_number')}: "
         f"{r.get('type', 'interview').replace('_', ' ').title()}</strong> "
         f"({r.get('duration_minutes', 60)} min)"
-        + (f" — {r.get('scheduled_at')}" if r.get("scheduled_at") else "")
+        + (f" - {r.get('scheduled_at')}" if r.get("scheduled_at") else "")
         + "</li>"
         for r in rounds
     )
@@ -155,7 +149,7 @@ def send_interview_invite(
 <p>We are pleased to invite you to interview for the <strong>{job_title}</strong> role.</p>
 <p>Your interview process consists of the following rounds:</p>
 <ul>{rounds_html}</ul>
-<p>Calendar invites for each scheduled round are attached — open them to add the
+<p>Calendar invites for each scheduled round are attached - open them to add the
 events to your calendar. Please reply to this email with any questions.</p>
 <p>Best regards,<br>The Hiring Team</p>
 """
@@ -177,7 +171,7 @@ events to your calendar. Please reply to this email with any questions.</p>
         round_no = r.get("round_number", "")
 
         ics = _build_ics(
-            summary=f"{round_type} Interview — {candidate_name} ({job_title})",
+            summary=f"{round_type} Interview - {candidate_name} ({job_title})",
             description=f"Round {round_no}: {round_type} interview for {job_title}.",
             start_dt=start_dt,
             end_dt=end_dt,
@@ -188,7 +182,7 @@ events to your calendar. Please reply to this email with any questions.</p>
 
     return _send_email(
         to_email=to_email,
-        subject=f"Interview Invitation — {job_title}",
+        subject=f"Interview Invitation - {job_title}",
         body_html=body_html,
         reply_to=user_id,
         ics_attachments=ics_attachments or None,

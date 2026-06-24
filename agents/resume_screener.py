@@ -61,7 +61,7 @@ def _score_candidate(
                 seniority_signal=0,
                 resume_quality=0,
             ),
-            reasoning="Resume text was empty — could not evaluate.",
+            reasoning="Resume text was empty - could not evaluate.",
             bias_flags=[],
             recommended_for_shortlist=False,
         )
@@ -139,7 +139,7 @@ def run_resume_screener(state: PipelineState) -> dict:
             "current_stage": PipelineStage.RESUME_SCREENING,
         }
 
-    # Guard: if JD parsing failed the title stays "Parsing..." — don't screen against a bad JD
+    # Guard: if JD parsing failed the title stays "Parsing..." - don't screen against a bad JD
     if jd_dict.get("title", "Parsing...") == "Parsing...":
         return {
             "error_message": (

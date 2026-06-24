@@ -178,7 +178,7 @@ export default function PipelineDetailPage() {
     setSubmitting(true);
     setError(null);
     try {
-      // Only send approved plans — rejected ones are dropped from the pipeline entirely
+      // Only send approved plans - rejected ones are dropped from the pipeline entirely
       const approvedPlansOnly = activePlans.filter((p) => p.human_approved === true);
       await apiPost(`/pipeline/${threadId}/approve-plans`, {
         interview_plans: approvedPlansOnly,
@@ -191,7 +191,7 @@ export default function PipelineDetailPage() {
           setError(`Plans confirmed. Some invites failed: ${inviteResult.failed.map(f => f.reason).join(", ")}`);
         }
       } catch (inviteErr) {
-        // Non-fatal — plans are saved, just warn about invites
+        // Non-fatal - plans are saved, just warn about invites
         setError(`Plans confirmed but invite sending failed: ${inviteErr.message}`);
       }
       await fetchState();
@@ -753,7 +753,7 @@ function PipelineSummary({ candidates, shortlist, plans, evaluations, offers, on
         <StatBox value={offersSent.length}    label="Offers Sent"      color="#16a34a" />
       </div>
 
-      {/* Offers sent — detail */}
+      {/* Offers sent - detail */}
       {offersSent.length > 0 && (
         <div className="card" style={{ marginBottom: "1.5rem", borderColor: "#86efac", backgroundColor: "#f0fdf4" }}>
           <h3 style={{ color: "#166534", marginBottom: "1rem" }}>Offers Sent ({offersSent.length})</h3>

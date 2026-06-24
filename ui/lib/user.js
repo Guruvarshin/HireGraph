@@ -8,7 +8,7 @@ function generateUUID() {
   });
 }
 
-/** Set the authenticated email — called after Google OAuth */
+/** Set the authenticated email - called after Google OAuth */
 export function setRecruiterEmail(email) {
   if (typeof window !== "undefined" && email) {
     localStorage.setItem(EMAIL_KEY, email.toLowerCase().trim());
@@ -22,7 +22,7 @@ export function getRecruiterId() {
   const email = localStorage.getItem(EMAIL_KEY);
   if (email) return email;
 
-  // Pre-login fallback — replaced by email once authenticated
+  // Pre-login fallback - replaced by email once authenticated
   let id = localStorage.getItem(FALLBACK_KEY);
   if (!id) {
     id = generateUUID();
@@ -38,7 +38,7 @@ export function getApiHeaders() {
   };
 }
 
-/** Called on sign-out — clears auth email but keeps fallback UUID intact */
+/** Called on sign-out - clears auth email but keeps fallback UUID intact */
 export function clearRecruiterEmail() {
   if (typeof window !== "undefined") {
     localStorage.removeItem(EMAIL_KEY);

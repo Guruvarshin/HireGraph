@@ -109,7 +109,7 @@ def run_jd_parser(state: PipelineState) -> dict:
         raw_content: str = response.content
     except Exception as exc:
         return {
-            "error_message": f"JD Parser: LLM call failed — {exc}",
+            "error_message": f"JD Parser: LLM call failed - {exc}",
             "current_stage": PipelineStage.JD_PARSING,
         }
 
@@ -118,7 +118,7 @@ def run_jd_parser(state: PipelineState) -> dict:
         parsed: dict = json.loads(clean_json)
     except json.JSONDecodeError as exc:
         return {
-            "error_message": f"JD Parser: LLM returned non-JSON — {exc}. Raw: {raw_content[:300]}",
+            "error_message": f"JD Parser: LLM returned non-JSON - {exc}. Raw: {raw_content[:300]}",
             "current_stage": PipelineStage.JD_PARSING,
         }
 
@@ -128,7 +128,7 @@ def run_jd_parser(state: PipelineState) -> dict:
         job_description = JobDescription(**sanitised)
     except Exception as exc:
         return {
-            "error_message": f"JD Parser: validation failed after sanitisation — {exc}",
+            "error_message": f"JD Parser: validation failed after sanitisation - {exc}",
             "current_stage": PipelineStage.JD_PARSING,
         }
 

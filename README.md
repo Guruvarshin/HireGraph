@@ -24,8 +24,9 @@ Offer Drafting → Offer Review (human) → Send Offers
 | Backend | FastAPI + Python |
 | Frontend | Next.js 15 |
 | Database | MongoDB Atlas (pipeline state + LangGraph checkpoints) |
-| Auth | Google OAuth 2.0 |
-| Email / Calendar | Gmail API + Google Calendar API |
+| Auth | Google OAuth 2.0 (sign-in only — non-sensitive scopes) |
+| Email | Gmail SMTP (App Password) |
+| Calendar invites | `.ics` attachments (no calendar API needed) |
 | Web search fallback | Tavily |
 
 ## Agents
@@ -34,17 +35,23 @@ Offer Drafting → Offer Review (human) → Send Offers
 - **Resume Screener** — scores each candidate on 4 dimensions against the JD and company rubric
 - **Interview Planner** — designs tailored interview rounds per candidate
 - **Interview Evaluator** — synthesizes interviewer feedback into a hire/no-hire recommendation
-- **Offer Drafter** — drafts a full offer letter with salary justified against company comp bands
+- **Offer Drafter** — drafts a full offer letter with salary justified against the company's compensation bands
 
 ## Multi-Tenancy
 
-Each recruiter gets isolated Pinecone namespaces scoped to their email:
+Each recruiter gets an isolated Pinecone namespace scoped to their **full email**, so two users at the same company never share a knowledge base:
 
 ```
-guruvarshini_gmail_com__company_rubrics
+guruvarshinib_ai_gmail_com__company_rubrics
 ```
 
-Knowledge base documents (hiring rubrics, comp bands) are private per user. Pipeline state in MongoDB is scoped by `user_id`.
+A single `company_rubrics` knowledge base per user holds everything the agents need — hiring standards, seniority levels, interview process, and salary/compensation bands. Pipeline state in MongoDB is scoped by `user_id`.
+
+## Email & Calendar (no Google verification required)
+
+Email is sent via **Gmail SMTP using an App Password**, which is independent of OAuth — so the app needs **no Google verification, no consent-screen review, and can email any recipient**. Interview invites include one **`.ics` calendar attachment per scheduled round**, which recipients can add to any calendar (Google, Outlook, Apple). Replies route back to the recruiter who ran the pipeline via the `Reply-To` header.
+
+Google OAuth is used **only for sign-in** (`openid`, `email`, `profile` — all non-sensitive scopes).
 
 ## RAG (Agentic Retrieval)
 
@@ -68,7 +75,7 @@ models/          # Pydantic models for all pipeline state types
 prompts/         # System prompts for each agent
 scripts/         # Setup and health check scripts
 ui/              # Next.js frontend
-utils/           # Resume parser, Google API client
+utils/           # Resume parser, Gmail SMTP email client
 ```
 
 ## Running Locally
@@ -77,14 +84,14 @@ utils/           # Resume parser, Google API client
 - Python 3.11+
 - Node.js 18+
 - MongoDB Atlas cluster
-- Pinecone account — create a serverless index (1536 dims, cosine, `hiregraph`)
+- Pinecone account — create a serverless index (1536 dims, cosine)
 - OpenAI API key
-- Google OAuth 2.0 credentials (Gmail + Calendar scopes)
+- Google OAuth 2.0 credentials (sign-in only)
+- A Gmail account with 2-Step Verification + an App Password ([create one](https://myaccount.google.com/apppasswords))
 
 ### Backend
 
 ```bash
-cd ai-recruiting-pipeline   # if nested, otherwise stay at root
 python -m venv .venv
 
 # Windows (PowerShell)
@@ -121,16 +128,27 @@ MONGODB_URI=
 MONGODB_DB_NAME=recruiting_pipeline
 
 PINECONE_API_KEY=
-PINECONE_INDEX_NAME=hiregraph
+PINECONE_INDEX_NAME=recruiting-pipeline
 
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
 
+# Gmail SMTP — App Password (not OAuth). No Google verification needed.
+GMAIL_ADDRESS=youremail@gmail.com
+GMAIL_APP_PASSWORD=
+
 TAVILY_API_KEY=
 
 FRONTEND_URL=http://localhost:3000
 ```
+
+## Deployment
+
+- **Backend** — deployed on **Railway** (Docker, builds from the `Dockerfile`; `railway.toml` defines the health check). All env vars above must be set in the Railway dashboard, including `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD`. `GOOGLE_REDIRECT_URI` must point to the Railway URL and be registered in the Google Cloud Console.
+- **Frontend** — deployed on **Vercel**; set `NEXT_PUBLIC_API_URL` to the backend URL.
+
+A `render.yaml` blueprint is also included as an alternative one-click Docker deployment on Render.
 
 ## Human-in-the-Loop Checkpoints
 

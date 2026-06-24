@@ -15,7 +15,7 @@ def check_env_vars():
         "GOOGLE_CLIENT_ID",
         "GOOGLE_CLIENT_SECRET",
         "GMAIL_ADDRESS",
-        "GMAIL_APP_PASSWORD",
+        "BREVO_API_KEY",
         "TAVILY_API_KEY",
     ]
     missing = [var for var in required if not os.getenv(var)]

@@ -1,66 +1,24 @@
 from __future__ import annotations
 
+import base64
 import os
-import smtplib
-import socket
-import ssl
 import uuid
 from datetime import datetime, timedelta, timezone
-from email.mime.base import MIMEBase
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email import encoders
 
-# Gmail SMTP — uses an App Password (not OAuth), so it needs NO Google
-# verification, no consent screen, and can email any recipient for free.
-# Enable 2-Step Verification on the account, then create an App Password:
-#   https://myaccount.google.com/apppasswords
-_GMAIL_ADDRESS      = os.getenv("GMAIL_ADDRESS", "")
-_GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
-_SMTP_HOST          = "smtp.gmail.com"
-_SMTP_PORT          = 587
-_SMTP_SSL_PORT      = 465
+import requests
 
-
-def _smtp_connect() -> smtplib.SMTP:
-    """Open an authenticated Gmail SMTP connection, forcing IPv4.
-
-    Many cloud hosts (Railway/Render containers) have broken IPv6 egress, which
-    makes smtplib raise '[Errno 101] Network is unreachable' when Gmail's DNS
-    resolves to an IPv6 address. Resolving to IPv4 ourselves avoids that. We try
-    STARTTLS on 587 first, then implicit SSL on 465 as a fallback.
-    """
-    def _ipv4(host: str) -> str:
-        return socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
-
-    ipv4 = _ipv4(_SMTP_HOST)
-    last_exc: Exception | None = None
-
-    # Attempt 1: STARTTLS on 587
-    try:
-        server = smtplib.SMTP(timeout=30)
-        server.connect(ipv4, _SMTP_PORT)
-        server._host = _SMTP_HOST            # keep hostname for TLS cert verification
-        server.starttls(context=ssl.create_default_context())
-        server.login(_GMAIL_ADDRESS, _GMAIL_APP_PASSWORD)
-        return server
-    except Exception as exc:
-        last_exc = exc
-
-    # Attempt 2: implicit SSL on 465
-    try:
-        server = smtplib.SMTP_SSL(timeout=30, context=ssl.create_default_context())
-        server._host = _SMTP_HOST
-        server.connect(ipv4, _SMTP_SSL_PORT)
-        server.login(_GMAIL_ADDRESS, _GMAIL_APP_PASSWORD)
-        return server
-    except Exception as exc:
-        last_exc = exc
-
-    raise RuntimeError(
-        f"Could not open Gmail SMTP connection (tried 587 STARTTLS and 465 SSL): {last_exc}. "
-        "If this is a deployed host, it may block outbound SMTP ports — use an HTTP email API instead."
-    ) from last_exc
+# Email is sent via the Brevo (Sendinblue) HTTP API over HTTPS (port 443).
+# Cloud hosts like Railway block outbound SMTP ports (25/465/587), so raw SMTP
+# hangs and times out there — an HTTP API sidesteps that entirely.
+# Brevo "single sender verification" lets us send FROM a Gmail address to any
+# recipient without owning a domain and without Google verification.
+#   1. Sign up at https://www.brevo.com  (free, 300 emails/day)
+#   2. Senders & IP → verify your sender email (the GMAIL_ADDRESS below)
+#   3. SMTP & API → API Keys → create a key → set BREVO_API_KEY
+_BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
+_SENDER_EMAIL  = os.getenv("GMAIL_ADDRESS", "")          # must be a verified Brevo sender
+_SENDER_NAME   = os.getenv("EMAIL_SENDER_NAME", "HireGraph")
+_BREVO_URL     = "https://api.brevo.com/v3/smtp/email"
 
 
 def _send_email(
@@ -70,52 +28,54 @@ def _send_email(
     reply_to: str = "",
     ics_attachments: list[tuple[str, str]] | None = None,
 ) -> str:
-    if not _GMAIL_ADDRESS or not _GMAIL_APP_PASSWORD:
+    if not _BREVO_API_KEY:
         raise RuntimeError(
-            "GMAIL_ADDRESS and GMAIL_APP_PASSWORD must be set in .env. "
-            "Generate an App Password at https://myaccount.google.com/apppasswords"
+            "BREVO_API_KEY is not set. Sign up at brevo.com, verify your sender "
+            "email, create an API key, and set BREVO_API_KEY in the environment."
         )
+    if not _SENDER_EMAIL:
+        raise RuntimeError("GMAIL_ADDRESS (used as the verified Brevo sender) is not set.")
 
-    msg = MIMEMultipart("mixed")
-    msg["From"]    = _GMAIL_ADDRESS
-    msg["To"]      = to_email
-    msg["Subject"] = subject
+    payload: dict = {
+        "sender":      {"name": _SENDER_NAME, "email": _SENDER_EMAIL},
+        "to":          [{"email": to_email}],
+        "subject":     subject,
+        "htmlContent": body_html,
+    }
     if reply_to:
-        msg["Reply-To"] = reply_to
+        payload["replyTo"] = {"email": reply_to}
 
-    # Body: plain-text + HTML alternative
-    alt = MIMEMultipart("alternative")
-    plain = (body_html
-             .replace("<br>", "\n").replace("<br/>", "\n")
-             .replace("<p>", "\n").replace("</p>", "")
-             .replace("<li>", "• ").replace("</li>", "\n")
-             .replace("<strong>", "").replace("</strong>", "")
-             .replace("<ul>", "").replace("</ul>", ""))
-    alt.attach(MIMEText(plain, "plain"))
-    alt.attach(MIMEText(body_html, "html"))
-    msg.attach(alt)
-
-    # .ics calendar attachments
+    # .ics calendar attachments — Brevo wants base64 content + filename
+    attachments = []
     for filename, ics_text in (ics_attachments or []):
-        part = MIMEBase("text", "calendar", method="REQUEST", name=filename)
-        part.set_payload(ics_text)
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f"attachment; filename={filename}")
-        msg.attach(part)
+        encoded = base64.b64encode(ics_text.encode("utf-8")).decode("utf-8")
+        attachments.append({"name": filename, "content": encoded})
+    if attachments:
+        payload["attachment"] = attachments
 
     try:
-        server = _smtp_connect()
-        try:
-            server.sendmail(_GMAIL_ADDRESS, [to_email], msg.as_string())
-        finally:
-            try:
-                server.quit()
-            except Exception:
-                pass
+        resp = requests.post(
+            _BREVO_URL,
+            json=payload,
+            headers={
+                "api-key":      _BREVO_API_KEY,
+                "content-type": "application/json",
+                "accept":       "application/json",
+            },
+            timeout=30,
+        )
     except Exception as exc:
-        raise RuntimeError(f"Gmail SMTP send failed → {to_email}: {exc}") from exc
+        raise RuntimeError(f"Email send failed → {to_email}: {exc}") from exc
 
-    return msg["Subject"]
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Email send failed → {to_email}: HTTP {resp.status_code} {resp.text}"
+        )
+
+    try:
+        return resp.json().get("messageId", "")
+    except Exception:
+        return ""
 
 
 def _ics_dt(dt: datetime) -> str:

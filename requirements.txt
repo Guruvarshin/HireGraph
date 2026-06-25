@@ -26,6 +26,8 @@ pinecone
 python-docx
 pypdf
 
+boto3
+
 tavily-python
 
 pytest

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
 import os
-import re
 from datetime import datetime, timezone
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from models.pipeline import (
+    DraftedOffer,
     EmailStatus,
     OfferDraft,
     JobDescription,
@@ -24,13 +23,7 @@ _llm = ChatOpenAI(
     model=os.getenv("OPENAI_AGENT_MODEL", "gpt-4o"),
     temperature=0,
 )
-
-
-def _extract_json(text: str) -> str:
-    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
-    if match:
-        return match.group(1)
-    return text.strip()
+_structured_llm = _llm.with_structured_output(DraftedOffer)
 
 
 def _build_candidate_profile(
@@ -94,39 +87,17 @@ def _draft_offer(
     ]
 
     try:
-        response = _llm.invoke(messages)
-        raw_content: str = response.content
+        parsed: DraftedOffer = _structured_llm.invoke(messages)
     except Exception as exc:
         raise RuntimeError(
             f"LLM call failed for offer drafting of candidate {candidate_id}: {exc}"
         ) from exc
 
-    try:
-        clean_json = _extract_json(raw_content)
-        parsed: dict = json.loads(clean_json)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Non-JSON response for candidate {candidate_id}: {exc}. "
-            f"Raw: {raw_content[:300]}"
-        ) from exc
-
-    try:
-        offer = OfferDraft(
-            candidate_id=candidate_id,
-            base_salary=int(parsed.get("base_salary", 0)),
-            equity=parsed.get("equity") or None,
-            start_date=parsed.get("start_date") or None,
-            offer_letter_text=parsed.get("offer_letter_text", ""),
-            market_data_used=parsed.get("market_data_used", ""),
-            salary_reasoning=parsed.get("salary_reasoning", ""),
-            email_status=EmailStatus.NOT_SENT,
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            f"Pydantic validation failed for OfferDraft of {candidate_id}: {exc}"
-        ) from exc
-
-    return offer
+    return OfferDraft(
+        candidate_id=candidate_id,
+        email_status=EmailStatus.NOT_SENT,
+        **parsed.model_dump(),
+    )
 
 
 @traceable(name="Agent 5: Offer Drafter", run_type="chain")

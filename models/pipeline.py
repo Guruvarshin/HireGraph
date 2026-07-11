@@ -188,6 +188,68 @@ class OfferDraft(BaseModel):
         return self.human_modified_start_date or self.start_date
 
 
+# ---------------------------------------------------------------------------
+# LLM output schemas
+#
+# These mirror the domain models above but contain ONLY the fields an agent's
+# LLM should generate. App-managed fields (candidate_id, email_status,
+# human_approved, calendar ids, ...) are injected by the agent after the call.
+# They are passed to `ChatOpenAI.with_structured_output(...)` so the model is
+# constrained to emit exactly this shape - no post-hoc JSON parsing needed.
+# ---------------------------------------------------------------------------
+
+
+class ParsedJD(BaseModel):
+    title: str
+    required_skills: list[str] = Field(default_factory=list)
+    nice_to_have_skills: list[str] = Field(default_factory=list)
+    years_experience_required: Optional[int] = None
+    seniority: Seniority
+    salary_range: Optional[SalaryRange] = None
+    location: str
+    remote_policy: str
+    team_size_context: Optional[str] = None
+    contradictions_found: list[str] = Field(default_factory=list)
+
+
+class ScoredResume(BaseModel):
+    overall_score: int = Field(ge=0, le=100)
+    dimension_scores: DimensionScores
+    reasoning: str
+    bias_flags: list[str] = Field(default_factory=list)
+    recommended_for_shortlist: bool
+
+
+class PlannedRound(BaseModel):
+    round_number: int
+    type: InterviewType
+    duration_minutes: int = 60
+    interviewers: list[str] = Field(default_factory=list)
+    questions: list[str] = Field(default_factory=list)
+
+
+class PlannedInterview(BaseModel):
+    rounds: list[PlannedRound] = Field(default_factory=list)
+
+
+class EvaluatedInterview(BaseModel):
+    final_recommendation: HireRecommendation
+    confidence: float = Field(ge=0.0, le=1.0)
+    composite_score: int = Field(ge=0, le=100)
+    reasoning: str
+    dissenting_notes: Optional[str] = None
+    recommended_for_offer: bool
+
+
+class DraftedOffer(BaseModel):
+    base_salary: int
+    equity: Optional[str] = None
+    start_date: Optional[str] = None
+    offer_letter_text: str
+    market_data_used: str
+    salary_reasoning: str
+
+
 class PipelineState(TypedDict, total=False):
     thread_id:          str
     user_id:            str

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import json
 import os
-import re
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from models.pipeline import (
+    EvaluatedInterview,
     InterviewEvaluation,
-    HireRecommendation,
     PipelineState,
     PipelineStage,
 )
@@ -21,13 +19,7 @@ _llm = ChatOpenAI(
     model=os.getenv("OPENAI_AGENT_MODEL", "gpt-4o"),
     temperature=0,
 )
-
-
-def _extract_json(text: str) -> str:
-    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
-    if match:
-        return match.group(1)
-    return text.strip()
+_structured_llm = _llm.with_structured_output(EvaluatedInterview)
 
 
 def _format_feedback(feedback: dict) -> str:
@@ -72,45 +64,13 @@ def _evaluate_candidate(
     ]
 
     try:
-        response = _llm.invoke(messages)
-        raw_content: str = response.content
+        parsed: EvaluatedInterview = _structured_llm.invoke(messages)
     except Exception as exc:
         raise RuntimeError(
             f"LLM call failed for evaluating candidate {candidate_id}: {exc}"
         ) from exc
 
-    try:
-        clean_json = _extract_json(raw_content)
-        parsed: dict = json.loads(clean_json)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Non-JSON response for candidate {candidate_id}: {exc}. "
-            f"Raw: {raw_content[:300]}"
-        ) from exc
-
-
-    rec_str = parsed.get("final_recommendation", "maybe")
-    try:
-        recommendation = HireRecommendation(rec_str)
-    except ValueError:
-        recommendation = HireRecommendation.MAYBE
-
-    try:
-        evaluation = InterviewEvaluation(
-            candidate_id=candidate_id,
-            final_recommendation=recommendation,
-            confidence=float(parsed.get("confidence", 0.5)),
-            composite_score=int(parsed.get("composite_score", 0)),
-            reasoning=parsed.get("reasoning", ""),
-            dissenting_notes=parsed.get("dissenting_notes") or None,
-            recommended_for_offer=bool(parsed.get("recommended_for_offer", False)),
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            f"Pydantic validation failed for InterviewEvaluation of {candidate_id}: {exc}"
-        ) from exc
-
-    return evaluation
+    return InterviewEvaluation(candidate_id=candidate_id, **parsed.model_dump())
 
 
 @traceable(name="Agent 4: Interview Evaluator", run_type="chain")

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import os
-import re
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -10,10 +8,10 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from models.pipeline import (
     InterviewPlan,
     InterviewRound,
-    InterviewType,
     JobDescription,
     PipelineState,
     PipelineStage,
+    PlannedInterview,
 )
 from memory.agentic_rag import rag
 from prompts.agents import INTERVIEW_PLANNER_PROMPT
@@ -24,13 +22,7 @@ _llm = ChatOpenAI(
     model=os.getenv("OPENAI_AGENT_MODEL", "gpt-4o"),
     temperature=0,
 )
-
-
-def _extract_json(text: str) -> str:
-    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
-    if match:
-        return match.group(1)
-    return text.strip()
+_structured_llm = _llm.with_structured_output(PlannedInterview)
 
 
 @traceable(name="Plan candidate interview", run_type="chain")
@@ -81,79 +73,19 @@ def _plan_for_candidate(
     ]
 
     try:
-        response = _llm.invoke(messages)
-        raw_content: str = response.content
+        parsed: PlannedInterview = _structured_llm.invoke(messages)
     except Exception as exc:
         raise RuntimeError(
             f"LLM call failed for interview planning of candidate {candidate_id}: {exc}"
         ) from exc
 
-    try:
-        clean_json = _extract_json(raw_content)
-        parsed: dict = json.loads(clean_json)
-    except json.JSONDecodeError as exc:
+    if not parsed.rounds:
         raise RuntimeError(
-            f"Non-JSON response for candidate {candidate_id}: {exc}. "
-            f"Raw: {raw_content[:300]}"
-        ) from exc
-
-
-    # Accept "rounds" or legacy "interview_rounds" key
-    raw_rounds = parsed.get("rounds") or parsed.get("interview_rounds") or []
-
-    rounds: list[InterviewRound] = []
-    for i, raw_round in enumerate(raw_rounds):
-        try:
-            round_type_str = str(raw_round.get("type", "technical")).lower().strip()
-            try:
-                round_type = InterviewType(round_type_str)
-            except ValueError:
-                round_type = InterviewType.TECHNICAL
-
-            # Accept round_number or round_index
-            round_num = (
-                raw_round.get("round_number")
-                or raw_round.get("round_index")
-                or (i + 1)
-            )
-
-            interviewers = raw_round.get("interviewers") or []
-            if not isinstance(interviewers, list):
-                interviewers = [str(interviewers)]
-
-            questions = raw_round.get("questions") or []
-            if not isinstance(questions, list):
-                questions = [str(questions)]
-
-            duration = int(raw_round.get("duration_minutes") or 60)
-
-            rounds.append(InterviewRound(
-                round_number=int(round_num),
-                type=round_type,
-                duration_minutes=duration,
-                interviewers=interviewers,
-                questions=questions,
-            ))
-        except Exception:
-            continue
-
-    if not rounds:
-        raise RuntimeError(
-            f"Interview planner produced no valid rounds for candidate {candidate_id}. "
-            f"LLM output keys: {list(parsed.keys())}. Raw (first 400): {raw_content[:400]}"
+            f"Interview planner produced no rounds for candidate {candidate_id}."
         )
 
-    try:
-        plan = InterviewPlan(
-            candidate_id=candidate_id,
-            rounds=rounds,
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            f"Pydantic validation failed for InterviewPlan of {candidate_id}: {exc}"
-        ) from exc
-
-    return plan
+    rounds = [InterviewRound(**r.model_dump()) for r in parsed.rounds]
+    return InterviewPlan(candidate_id=candidate_id, rounds=rounds)
 
 
 @traceable(name="Agent 3: Interview Planner", run_type="chain")

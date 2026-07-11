@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import os
-import re
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -13,6 +11,7 @@ from models.pipeline import (
     JobDescription,
     PipelineState,
     PipelineStage,
+    ScoredResume,
 )
 from memory.agentic_rag import rag
 from prompts.agents import RESUME_SCREENER_PROMPT
@@ -23,22 +22,7 @@ _llm = ChatOpenAI(
     model=os.getenv("OPENAI_AGENT_MODEL", "gpt-4o"),
     temperature=0,
 )
-
-
-def _extract_json(text: str) -> str:
-    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
-    if match:
-        return match.group(1)
-    return text.strip()
-
-
-def _normalise_bias_flags(raw) -> list[str]:
-    """Accept either a list of strings or a dict of {flag: bool} from the LLM."""
-    if isinstance(raw, list):
-        return [str(f) for f in raw]
-    if isinstance(raw, dict):
-        return [key for key, val in raw.items() if val]
-    return []
+_structured_llm = _llm.with_structured_output(ScoredResume)
 
 
 @traceable(name="Score candidate", run_type="chain")
@@ -90,43 +74,11 @@ def _score_candidate(
     ]
 
     try:
-        response = _llm.invoke(messages)
-        raw_content: str = response.content
+        parsed: ScoredResume = _structured_llm.invoke(messages)
     except Exception as exc:
-
         raise RuntimeError(f"LLM call failed for candidate {candidate_id}: {exc}") from exc
 
-    try:
-        clean_json = _extract_json(raw_content)
-        parsed: dict = json.loads(clean_json)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Non-JSON response for candidate {candidate_id}: {exc}. "
-            f"Raw: {raw_content[:300]}"
-        ) from exc
-
-
-    try:
-        dim = parsed.get("dimension_scores", {})
-        score = CandidateScore(
-            candidate_id=candidate_id,
-            overall_score=parsed.get("overall_score", 0),
-            dimension_scores=DimensionScores(
-                skills_match=dim.get("skills_match", 0),
-                experience_relevance=dim.get("experience_relevance", 0),
-                seniority_signal=dim.get("seniority_signal", 0),
-                resume_quality=dim.get("resume_quality", 0),
-            ),
-            reasoning=parsed.get("reasoning", ""),
-            bias_flags=_normalise_bias_flags(parsed.get("bias_flags", [])),
-            recommended_for_shortlist=parsed.get("recommended_for_shortlist", False),
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            f"Pydantic validation failed for candidate {candidate_id}: {exc}"
-        ) from exc
-
-    return score
+    return CandidateScore(candidate_id=candidate_id, **parsed.model_dump())
 
 
 @traceable(name="Agent 2: Resume Screener", run_type="chain")

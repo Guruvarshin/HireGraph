@@ -2,6 +2,8 @@ from __future__ import annotations
 import os
 import time
 
+from utils.tracing import traceable
+
 _MAX_ATTEMPTS = 3   # retry transient errors (throttling/timeout) before failing closed
 
 _GUARDRAIL_ID      = os.getenv("BEDROCK_GUARDRAIL_ID", "")
@@ -16,6 +18,7 @@ def is_enabled() -> bool:
     return bool(_GUARDRAIL_ID)
 
 
+@traceable(name="Guardrail: AWS Bedrock screen", run_type="tool")
 def apply_guardrail(text: str, source: str = "INPUT") -> dict:
     if not _GUARDRAIL_ID:
         if _REQUIRED:

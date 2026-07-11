@@ -119,7 +119,9 @@ class CandidateScore(BaseModel):
 
 class InterviewRound(BaseModel):
     round_number: int
-    type: InterviewType
+    title: str = ""          # rubric round name, e.g. "AI-first plan review"
+    type: InterviewType      # coarse category the title maps to
+    focus: str = ""          # one-line description of what this round probes
     duration_minutes: int = 60
     interviewers: list[str]
     interviewer_emails: list[str] = Field(default_factory=list)
@@ -222,7 +224,9 @@ class ScoredResume(BaseModel):
 
 class PlannedRound(BaseModel):
     round_number: int
-    type: InterviewType
+    title: str = ""          # round name from the company rubric, e.g. "AI-first plan review"
+    type: InterviewType      # closest category enum the title maps to
+    focus: str = ""          # one line on what this round probes
     duration_minutes: int = 60
     interviewers: list[str] = Field(default_factory=list)
     questions: list[str] = Field(default_factory=list)

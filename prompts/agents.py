@@ -69,8 +69,10 @@ Required structure:
   "rounds": [
     {
       "round_number": 1,
+      "title": "<the round name from the company rubric, e.g. 'AI-first plan review'>",
       "type": "<one of: technical, behavioral, system_design, portfolio, hiring_manager, culture>",
-      "duration_minutes": <integer, typically 45 or 60>,
+      "focus": "<one short line on what this round probes>",
+      "duration_minutes": <integer, typically 30, 45 or 60>,
       "interviewers": ["<role title of interviewer, e.g. Senior Engineer>"],
       "questions": [
         "<specific question tailored to this candidate's background>",
@@ -82,13 +84,18 @@ Required structure:
 }
 
 Rules:
-- Create 3 to 4 rounds total
+- If the company rubric context defines an interview process, MIRROR its rounds:
+  use each rubric round's name as "title", its stated duration, and map it to the
+  closest "type" category. Otherwise design a sensible 3-4 round process.
+- "title" is the human-facing round name (from the rubric when available). "type"
+  is only the coarse category the title maps to - two rounds can share a type but
+  must keep their distinct titles (e.g. "AI-first plan review" and "Live project
+  walkthrough" are both type "technical").
 - round_number starts at 1 and increments
 - type must be exactly one of the allowed values
 - interviewers is a list of role titles (not email addresses)
 - questions must be specific to THIS candidate's resume - not generic
-- Typical flow: technical -> system_design (if senior) -> behavioral -> hiring_manager
-- duration_minutes must be an integer (45 or 60)
+- duration_minutes must be an integer
 """
 
 INTERVIEW_EVALUATOR_PROMPT = """

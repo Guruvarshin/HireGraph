@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
+
+from utils.jwt_auth import current_recruiter
 
 router = APIRouter()
 
@@ -69,7 +71,7 @@ def _check_google(user_id: str) -> dict:
 
 @router.get("/status")
 def setup_status(
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 

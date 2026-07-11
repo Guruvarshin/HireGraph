@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Header, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
+
+from utils.jwt_auth import current_recruiter
 
 from models.pipeline import (
     Candidate,
@@ -94,7 +96,7 @@ class SendInvitesRequest(BaseModel):
 
 @router.get("")
 def list_pipelines(
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 
@@ -118,7 +120,7 @@ def list_pipelines(
 @router.get("/{thread_id}")
 def get_pipeline(
     thread_id: str,
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 
@@ -142,7 +144,7 @@ def get_pipeline(
 @router.delete("/{thread_id}")
 def delete_pipeline(
     thread_id: str,
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
     # Ownership check: only the owner may delete their pipeline.
     state = get_pipeline_state(thread_id) or get_pipeline_run(thread_id)
@@ -157,7 +159,7 @@ def delete_pipeline(
 
 @router.post("/start")
 async def start_new_pipeline(
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
     job_description_text: str = Form(...),
     resume_files: list[UploadFile] = File(...),
 ):
@@ -185,7 +187,7 @@ async def start_new_pipeline(
             name=name or file.filename.rsplit(".", 1)[0],
             email=email or "placeholder@example.com",
             raw_resume_text=clean_text,
-            file_name=file.filename,
+            file_name=file.filename, 
         )
         candidates.append(candidate.model_dump(mode="json"))
 
@@ -268,7 +270,7 @@ async def start_new_pipeline(
 def approve_shortlist(
     thread_id: str,
     request: ApproveShortlistRequest,
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 
@@ -309,7 +311,7 @@ def approve_shortlist(
 def approve_interview_plans(
     thread_id: str,
     request: ApprovePlansRequest,
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 
@@ -344,7 +346,7 @@ def approve_interview_plans(
 def submit_interview_feedback(
     thread_id: str,
     request: SubmitFeedbackRequest,
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 
@@ -380,7 +382,7 @@ def submit_interview_feedback(
 @router.post("/{thread_id}/resume-evaluator")
 def resume_after_feedback(
     thread_id: str,
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 
@@ -408,7 +410,7 @@ def resume_after_feedback(
 def approve_offer_candidates(
     thread_id: str,
     request: ApproveOfferCandidatesRequest,
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 
@@ -441,7 +443,7 @@ def approve_offer_candidates(
 def approve_final_offers(
     thread_id: str,
     request: ApproveOffersRequest,
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 
@@ -477,7 +479,7 @@ def approve_final_offers(
 @router.post("/{thread_id}/send-invites")
 async def send_interview_invites(
     thread_id: str,
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 

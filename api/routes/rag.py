@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+
+from utils.jwt_auth import current_recruiter
 
 router = APIRouter()
 
 
 @router.get("/rubrics-status")
 def rubrics_status(
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
     """Check whether company rubric vectors exist in Pinecone for this tenant."""
     try:
@@ -29,7 +31,7 @@ def rubrics_status(
 def search_rag(
     namespace: str = Query("company_rubrics", description="Only 'company_rubrics' is supported"),
     query: str = Query(..., description="Search query"),
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
     if namespace != "company_rubrics":
         raise HTTPException(status_code=400, detail="namespace must be 'company_rubrics'")
@@ -67,7 +69,7 @@ async def index_document(
     namespace: str = Form(...),
     document_file: UploadFile = File(...),
     document_name: str = Form(None),
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
 
 

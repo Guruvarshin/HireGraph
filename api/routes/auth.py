@@ -6,7 +6,7 @@ import urllib.parse
 from datetime import datetime, timezone
 
 import requests as http_requests
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
 from memory.database import (
@@ -15,6 +15,11 @@ from memory.database import (
     delete_google_tokens,
     save_recruiter_profile,
     get_recruiter_profile,
+)
+from utils.jwt_auth import (
+    create_access_token,
+    current_recruiter,
+    current_recruiter_optional,
 )
 
 router = APIRouter()
@@ -125,10 +130,15 @@ def auth_google_callback(request: Request):
     if not existing:
         save_recruiter_profile(email=email, name=given_name, role="")
 
-    # Redirect with email so the frontend can store it as its identity
+    # Mint a signed identity token. The frontend stores it and sends it as a
+    # Bearer token; the server verifies the signature on every request, so the
+    # tenant identity can no longer be spoofed by setting a header.
+    token = create_access_token(email=email, name=given_name)
+
     redirect_url = (
         f"{_FRONTEND_URL}/setup"
         f"?auth_success=true"
+        f"&token={urllib.parse.quote(token)}"
         f"&user_email={urllib.parse.quote(email)}"
         f"&user_name={urllib.parse.quote(given_name)}"
     )
@@ -137,8 +147,12 @@ def auth_google_callback(request: Request):
 
 @router.get("/status")
 def auth_status(
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str | None = Depends(current_recruiter_optional),
 ):
+    # Optional dependency: an unauthenticated caller gets a clean "false" instead
+    # of a 401, which the setup page relies on before sign-in.
+    if not x_recruiter_id:
+        return {"authenticated": False}
     token = get_google_tokens(user_id=x_recruiter_id)
     if not token:
         return {"authenticated": False}
@@ -153,9 +167,9 @@ def auth_status(
 
 @router.patch("/profile")
 def update_profile(
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
     name: str = Query(...),
     role: str = Query(...),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
     save_recruiter_profile(email=x_recruiter_id, name=name.strip(), role=role.strip())
     return {"name": name.strip(), "role": role.strip()}
@@ -163,7 +177,7 @@ def update_profile(
 
 @router.delete("/logout")
 def auth_logout(
-    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+    x_recruiter_id: str = Depends(current_recruiter),
 ):
     delete_google_tokens(user_id=x_recruiter_id)
     return {"message": "Google account disconnected."}

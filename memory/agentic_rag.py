@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -24,11 +25,12 @@ except Exception:
 
 
 TOP_K                  = 5
-RETRIEVE_K             = 12   # over-fetch, then rerank down to TOP_K
+RETRIEVE_K             = 20   # over-fetch wide, then rerank down to TOP_K
 MIN_RELEVANT_DOCS      = 1
 MAX_RETRIEVAL_ATTEMPTS = 2
-CHUNK_SIZE             = 500
-CHUNK_OVERLAP          = 100
+CHUNK_SIZE             = 800   # characters (recursive splitter)
+CHUNK_OVERLAP          = 150   # characters
+GRADE_TEXT_LIMIT       = 1500  # chars of a chunk shown to the grader
 RERANK_ENABLED         = True
 RERANK_MODEL           = "bge-reranker-v2-m3"   # Pinecone-hosted cross-encoder
 
@@ -141,7 +143,7 @@ class AgenticRAG:
                 prompt = [HumanMessage(content=(
                     f"Is this document relevant to the query?\n"
                     f"Query: {query}\n"
-                    f"Document: {doc['text'][:800]}\n"
+                    f"Document: {doc['text'][:GRADE_TEXT_LIMIT]}\n"
                     f"Reply with ONLY valid JSON: {{\"relevant\": true/false, \"reason\": \"one sentence\"}}"
                 ))]
                 response = self.llm_grader.invoke(prompt)
@@ -252,12 +254,17 @@ class AgenticRAG:
         relevant_docs: list[dict] = []
 
         for attempt in range(1, MAX_RETRIEVAL_ATTEMPTS + 1):
-            steps.append(f"rewrite (attempt {attempt})")
-            rewritten = self._rewrite_query(query, attempt=attempt)
+            if attempt == 1:
+                steps.append("retrieve (original query)")
+                search_query = query
+            else:
+                steps.append(f"rewrite (attempt {attempt})")
+                search_query = self._rewrite_query(query, attempt=attempt)
+                steps.append(f"retrieve (attempt {attempt})")
 
-            steps.append(f"retrieve (attempt {attempt})")
-            raw_docs = self._retrieve(rewritten, namespace)
+            raw_docs = self._retrieve(search_query, namespace)
 
+            # Rerank and grade always use the original query, never the rewrite.
             steps.append(f"rerank (attempt {attempt})")
             raw_docs = self._rerank(query, raw_docs)[:TOP_K]
 
@@ -333,23 +340,61 @@ class AgenticRAG:
             vectors=[{
                 "id":       vector_id,
                 "values":   embedding,
-                "metadata": {**metadata, "text": text[:1000]},
+                "metadata": {**metadata, "text": text},
             }],
             namespace=namespace,
         )
 
 
 def _chunk_text(text: str) -> list[str]:
-    words  = text.split()
-    chunks = []
-    start  = 0
-    while start < len(words):
-        end   = start + CHUNK_SIZE
-        chunk = " ".join(words[start:end])
-        if chunk.strip():
-            chunks.append(chunk)
-        start = end - CHUNK_OVERLAP
-    return chunks
+    """Recursively split on structural boundaries first (section rules, headers,
+    paragraphs) and only fall back to sentences/words. This keeps a section's
+    content together instead of slicing across headers like the old word-window
+    splitter did. Separators are tried in order, largest structure first."""
+    separators = [
+        "\n=====",   # section rule lines in the rubric docs
+        "\nSECTION", # section headers
+        "\n\n",      # paragraphs
+        "\n",        # lines
+        ". ",        # sentences
+        " ",         # words
+        "",          # characters (last resort)
+    ]
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+    except ImportError:
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        separators=separators,
+        keep_separator=True,
+    )
+    raw_chunks = [c for c in splitter.split_text(text) if c.strip()]
+    return _carry_section_header(raw_chunks)
+
+
+def _carry_section_header(chunks: list[str]) -> list[str]:
+    """Prepend the current SECTION header to any chunk that doesn't already carry
+    it. A long section is split across several chunks; without this, the tail
+    chunks (e.g. the interview rounds) lose the "SECTION 4 - INTERVIEW PROCESS"
+    title, so a query for that section can't match them lexically or semantically."""
+    header_re = re.compile(r"^\s*(SECTION\b.*)$", re.MULTILINE)
+    current_header = ""
+    out: list[str] = []
+    for chunk in chunks:
+        found = header_re.findall(chunk)
+        if found:
+            # A chunk may straddle two sections; content that follows belongs to
+            # the LAST header in the chunk, so track that one.
+            current_header = found[-1].strip()
+            out.append(chunk)
+        elif current_header:
+            out.append(f"[{current_header}]\n{chunk}")
+        else:
+            out.append(chunk)
+    return out
 
 
 def _make_id(text: str, namespace: str, chunk_index: int) -> str:

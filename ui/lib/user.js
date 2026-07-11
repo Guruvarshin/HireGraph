@@ -1,5 +1,24 @@
 const EMAIL_KEY      = "hiregraph_user_email";
 const FALLBACK_KEY   = "hiregraph_fallback_id";
+const TOKEN_KEY      = "hiregraph_token";
+
+/** Store the signed JWT issued by the OAuth callback. */
+export function setAuthToken(token) {
+  if (typeof window !== "undefined" && token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+}
+
+export function getAuthToken() {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(TOKEN_KEY) || "";
+}
+
+/** Authorization header (empty object pre-login so calls degrade cleanly). */
+export function authHeader() {
+  const t = getAuthToken();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
 
 function generateUUID() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
@@ -33,14 +52,15 @@ export function getRecruiterId() {
 
 export function getApiHeaders() {
   return {
-    "X-Recruiter-ID":  getRecruiterId(),
-    "Content-Type":    "application/json",
+    ...authHeader(),
+    "Content-Type": "application/json",
   };
 }
 
-/** Called on sign-out - clears auth email but keeps fallback UUID intact */
+/** Called on sign-out - clears the auth token + email, keeps fallback UUID intact */
 export function clearRecruiterEmail() {
   if (typeof window !== "undefined") {
     localStorage.removeItem(EMAIL_KEY);
+    localStorage.removeItem(TOKEN_KEY);
   }
 }

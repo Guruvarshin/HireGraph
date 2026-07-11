@@ -1,4 +1,4 @@
-import { getApiHeaders, getRecruiterId } from "@/lib/user";
+import { getApiHeaders, authHeader } from "@/lib/user";
 
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -62,10 +62,8 @@ export async function apiPost(endpoint, body) {
 
 export async function apiPostForm(endpoint, formData) {
   const url = `${API_BASE_URL}${endpoint}`;
-  const headers = {
-    "X-Recruiter-ID": getRecruiterId(),
-
-  };
+  // No Content-Type: the browser sets the multipart boundary. Auth via Bearer token.
+  const headers = { ...authHeader() };
 
   try {
     const response = await fetch(url, {

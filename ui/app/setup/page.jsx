@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPostForm } from "@/lib/api";
-import { getRecruiterId, setRecruiterEmail } from "@/lib/user";
+import { setRecruiterEmail, setAuthToken, authHeader } from "@/lib/user";
 
 const RUBRICS_KEY = "hiregraph_rubrics_uploaded";
 
@@ -64,14 +64,16 @@ export default function SetupPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("auth_success") === "true") {
+      const token = params.get("token");
       const email = params.get("user_email");
       const name  = params.get("user_name");
+      if (token) setAuthToken(token);        // signed identity - sent as Bearer on every call
       if (email) {
-        setRecruiterEmail(email);          // save email as the stable identity
+        setRecruiterEmail(email);            // kept for display only; auth is the token
         if (name && !recruiterName) setRecruiterName(decodeURIComponent(name));
       }
       setAuthSuccess(true);
-      window.history.replaceState({}, "", "/setup");
+      window.history.replaceState({}, "", "/setup");  // strip token from the URL
     }
     if (params.get("auth_error")) {
       setAuthError(decodeURIComponent(params.get("auth_error")));
@@ -104,7 +106,7 @@ export default function SetupPage() {
       const params = new URLSearchParams({ name: recruiterName.trim(), role: recruiterRole.trim() });
       await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/profile?${params}`,
-        { method: "PATCH", headers: { "X-Recruiter-ID": getRecruiterId() } }
+        { method: "PATCH", headers: { ...authHeader() } }
       );
       setProfileSaved(true);
     } catch {
@@ -136,7 +138,7 @@ export default function SetupPage() {
       const { clearRecruiterEmail } = await import("@/lib/user");
       await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/logout`,
-        { method: "DELETE", headers: { "X-Recruiter-ID": getRecruiterId() } }
+        { method: "DELETE", headers: { ...authHeader() } }
       );
       clearRecruiterEmail();
       setGmailConnected(false);

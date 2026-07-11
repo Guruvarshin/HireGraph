@@ -4,7 +4,7 @@ import "@/styles/globals.css";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getRecruiterId, clearRecruiterEmail } from "@/lib/user";
+import { authHeader, clearRecruiterEmail } from "@/lib/user";
 import { apiGet } from "@/lib/api";
 
 const RUBRICS_KEY = "hiregraph_rubrics_uploaded";
@@ -36,7 +36,7 @@ export default function RootLayout({ children }) {
     try {
       await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/logout`,
-        { method: "DELETE", headers: { "X-Recruiter-ID": getRecruiterId() } }
+        { method: "DELETE", headers: { ...authHeader() } }
       );
     } catch {}
     clearRecruiterEmail();

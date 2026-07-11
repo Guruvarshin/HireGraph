@@ -19,6 +19,7 @@ from memory.database import (
     list_pipeline_runs,
     update_pipeline_run,
     mark_pipeline_completed,
+    delete_pipeline_run,
 )
 from graph.pipeline import (
     start_pipeline,
@@ -136,6 +137,22 @@ def get_pipeline(
         raise HTTPException(status_code=403, detail="Not authorized to access this pipeline")
 
     return state
+
+
+@router.delete("/{thread_id}")
+def delete_pipeline(
+    thread_id: str,
+    x_recruiter_id: str = Header(..., alias="X-Recruiter-ID"),
+):
+    # Ownership check: only the owner may delete their pipeline.
+    state = get_pipeline_state(thread_id) or get_pipeline_run(thread_id)
+    if not state:
+        raise HTTPException(status_code=404, detail=f"Pipeline {thread_id} not found")
+    if state.get("user_id") != x_recruiter_id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this pipeline")
+
+    delete_pipeline_run(thread_id)   # removes the summary + LangGraph checkpoints
+    return {"deleted": True, "thread_id": thread_id}
 
 
 @router.post("/start")

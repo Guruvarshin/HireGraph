@@ -138,7 +138,15 @@ def list_pipeline_runs(user_id: str) -> list[dict]:
 
 
 def delete_pipeline_run(thread_id: str) -> None:
-    _runs().delete_one({"thread_id": thread_id})
+    """Delete a pipeline run and its LangGraph checkpoints (full cleanup)."""
+    db = get_db()
+    db["pipeline_runs"].delete_one({"thread_id": thread_id})
+    # Remove the authoritative graph state so no orphaned checkpoints remain.
+    for coll in ("lg_checkpoints", "lg_checkpoint_writes"):
+        try:
+            db[coll].delete_many({"thread_id": thread_id})
+        except Exception:
+            pass
 
 
 def mark_pipeline_failed(thread_id: str, error_message: str) -> None:

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiDelete } from "@/lib/api";
 import Link from "next/link";
 
 const STAGE_LABELS = {
@@ -49,6 +49,21 @@ export default function HomePage() {
   const formatDate = (iso) => {
     if (!iso) return "";
     return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  };
+
+  const handleDelete = async (e, threadId, title) => {
+    e.preventDefault();      // the card is wrapped in a Link; don't navigate
+    e.stopPropagation();
+    if (!window.confirm(`Delete pipeline "${title || "Untitled"}"? This cannot be undone.`)) return;
+    // Optimistic remove; restore on failure.
+    const prev = pipelines;
+    setPipelines((ps) => ps.filter((p) => p.thread_id !== threadId));
+    try {
+      await apiDelete(`/pipeline/${threadId}`);
+    } catch (err) {
+      setError(err.message);
+      setPipelines(prev);
+    }
   };
 
   return (
@@ -128,9 +143,19 @@ export default function HomePage() {
                   {/* Footer */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border-light)", paddingTop: "0.85rem" }}>
                     <span style={{ fontSize: "0.78rem", color: "var(--gray-400)" }}>{formatDate(p.created_at)}</span>
-                    <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--indigo-600)" }}>
-                      View →
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.9rem" }}>
+                      <button
+                        onClick={(e) => handleDelete(e, p.thread_id, p.job_title)}
+                        title="Delete pipeline"
+                        style={{ background: "none", border: "none", cursor: "pointer",
+                                 fontSize: "0.78rem", fontWeight: 600, color: "#dc2626" }}
+                      >
+                        Delete
+                      </button>
+                      <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--indigo-600)" }}>
+                        View →
+                      </span>
+                    </div>
                   </div>
                 </div>
               </Link>

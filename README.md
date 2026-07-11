@@ -60,15 +60,16 @@ A single `company_rubrics` knowledge base per user holds everything the agents n
 
 ## RAG (Agentic Retrieval)
 
-The `AgenticRAG` class implements a multi-step retrieval loop:
+The `AgenticRAG` class implements a self-correcting, multi-step retrieval loop:
 
-1. Decide: should retrieval happen for this query?
-2. Rewrite: reformulate the query for better vector search
-3. Retrieve: query Pinecone for a wide candidate pool (top-k 12)
-4. Rerank: reorder with a cross-encoder (`bge-reranker-v2-m3`, served by Pinecone inference) and narrow to the top 5, so chunks the embedding ranked lower but that actually answer the query are pulled in
-5. Grade: an LLM scores each retained chunk for relevance
-6. Retry: if results are weak, rewrite with different terminology
-7. Fallback: web search via Tavily if the vector DB returns nothing (also graded; gated per query so proprietary rubric lookups never fall back to generic web data)
+1. Rewrite: reformulate the query for better vector search (different terms on a retry)
+2. Retrieve: query Pinecone for a wide candidate pool (top-k 12)
+3. Rerank: reorder with a cross-encoder (`bge-reranker-v2-m3`, served by Pinecone inference) and narrow to the top 5, so chunks the embedding ranked lower but that actually answer the query are pulled in
+4. Grade: an LLM scores each retained chunk for relevance (reflection)
+5. Retry: if results are weak, rewrite with different terminology (capped at 2 attempts)
+6. Fallback: web search via Tavily if the vector DB returns nothing (also graded; gated per query so proprietary rubric lookups never fall back to generic web data)
+
+Every caller is a grounding call that has already decided it needs the rubric, so retrieval always runs. (An earlier "decide whether to retrieve" gate was removed after tracing showed it wrongly classifying salary as general knowledge and skipping the offer drafter's pay-band lookup.) The loop stays agentic through its defining traits: reflection (grading its own results), adaptive iteration (rewrite-and-retry), and tool use (web-search fallback).
 
 ## Evaluation
 

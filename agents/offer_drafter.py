@@ -17,6 +17,7 @@ from models.pipeline import (
 )
 from memory.agentic_rag import rag
 from prompts.agents import OFFER_DRAFTER_PROMPT
+from utils.tracing import traceable
 
 
 _llm = ChatOpenAI(
@@ -60,6 +61,7 @@ def _build_candidate_profile(
     )
 
 
+@traceable(name="Draft offer", run_type="chain")
 def _draft_offer(
     candidate: dict,
     evaluation: dict,
@@ -127,6 +129,7 @@ def _draft_offer(
     return offer
 
 
+@traceable(name="Agent 5: Offer Drafter", run_type="chain")
 def run_offer_drafter(state: PipelineState) -> dict:
 
 

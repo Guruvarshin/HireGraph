@@ -16,6 +16,7 @@ from models.pipeline import (
 )
 from memory.agentic_rag import rag
 from prompts.agents import RESUME_SCREENER_PROMPT
+from utils.tracing import traceable
 
 
 _llm = ChatOpenAI(
@@ -40,6 +41,7 @@ def _normalise_bias_flags(raw) -> list[str]:
     return []
 
 
+@traceable(name="Score candidate", run_type="chain")
 def _score_candidate(
     candidate: dict,
     jd: JobDescription,
@@ -127,6 +129,7 @@ def _score_candidate(
     return score
 
 
+@traceable(name="Agent 2: Resume Screener", run_type="chain")
 def run_resume_screener(state: PipelineState) -> dict:
 
 

@@ -17,6 +17,7 @@ from models.pipeline import (
 )
 from memory.agentic_rag import rag
 from prompts.agents import INTERVIEW_PLANNER_PROMPT
+from utils.tracing import traceable
 
 
 _llm = ChatOpenAI(
@@ -32,6 +33,7 @@ def _extract_json(text: str) -> str:
     return text.strip()
 
 
+@traceable(name="Plan candidate interview", run_type="chain")
 def _plan_for_candidate(
     candidate: dict,
     jd: JobDescription,
@@ -154,6 +156,7 @@ def _plan_for_candidate(
     return plan
 
 
+@traceable(name="Agent 3: Interview Planner", run_type="chain")
 def run_interview_planner(state: PipelineState) -> dict:
 
 

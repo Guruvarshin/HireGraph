@@ -10,6 +10,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from models.pipeline import JobDescription, PipelineState, PipelineStage, Seniority
 from memory.agentic_rag import rag
 from prompts.agents import JD_PARSER_PROMPT
+from utils.tracing import traceable
 
 
 _llm = ChatOpenAI(
@@ -83,6 +84,7 @@ def _sanitise_parsed(parsed: dict, raw_jd: str) -> dict:
     }
 
 
+@traceable(name="Agent 1: JD Parser", run_type="chain")
 def run_jd_parser(state: PipelineState) -> dict:
     raw_jd: str = state.get("job_description", {}).get("raw_text", "")
 

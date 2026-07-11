@@ -14,6 +14,7 @@ from models.pipeline import (
     PipelineStage,
 )
 from prompts.agents import INTERVIEW_EVALUATOR_PROMPT
+from utils.tracing import traceable
 
 
 _llm = ChatOpenAI(
@@ -45,6 +46,7 @@ def _format_feedback(feedback: dict) -> str:
     return "\n".join(lines)
 
 
+@traceable(name="Evaluate candidate", run_type="chain")
 def _evaluate_candidate(
     feedback: dict,
     candidate: dict | None,
@@ -111,6 +113,7 @@ def _evaluate_candidate(
     return evaluation
 
 
+@traceable(name="Agent 4: Interview Evaluator", run_type="chain")
 def run_interview_evaluator(state: PipelineState) -> dict:
 
 

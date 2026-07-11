@@ -180,10 +180,39 @@ events to your calendar. Please reply to this email with any questions.</p>
         )
         ics_attachments.append((f"interview_round_{round_no}.ics", ics))
 
-    return _send_email(
+    result = _send_email(
         to_email=to_email,
         subject=f"Interview Invitation - {job_title}",
         body_html=body_html,
         reply_to=user_id,
         ics_attachments=ics_attachments or None,
     )
+
+    # Also email each interviewer. They are attendees inside the .ics, but a .ics
+    # attachment does not deliver an invite on its own (no calendar server sends
+    # it), so we send them the same attachments directly.
+    interviewer_emails = sorted({
+        e for r in rounds for e in r.get("interviewer_emails", []) if e
+    })
+    interviewer_body = f"""
+<p>Hello,</p>
+<p>You are scheduled to interview <strong>{candidate_name}</strong> for the
+<strong>{job_title}</strong> role. The rounds are:</p>
+<ul>{rounds_html}</ul>
+<p>Calendar invites for each scheduled round are attached - open them to add the
+events to your calendar.</p>
+<p>Best regards,<br>The Hiring Team</p>
+"""
+    for iv in interviewer_emails:
+        try:
+            _send_email(
+                to_email=iv,
+                subject=f"Interview to conduct - {candidate_name} ({job_title})",
+                body_html=interviewer_body,
+                reply_to=user_id,
+                ics_attachments=ics_attachments or None,
+            )
+        except Exception:
+            pass   # one interviewer failing must not block the others
+
+    return result

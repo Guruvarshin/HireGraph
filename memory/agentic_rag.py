@@ -80,19 +80,6 @@ class AgenticRAG:
         self._index = self._pc.Index(os.getenv("PINECONE_INDEX_NAME"))
 
 
-    @traceable(name="rag.decide_retrieve", run_type="chain")
-    def _should_retrieve(self, query: str) -> bool:
-        from langchain_core.messages import HumanMessage
-        prompt = [HumanMessage(content=(
-            f"Does answering this query require retrieving documents from a knowledge base?\n"
-            f"Query: {query}\n"
-            f"Reply with YES or NO only."
-        ))]
-        response = self.llm_grader.invoke(prompt)
-        answer   = response.content.strip().upper()
-        return answer.startswith("Y")
-
-
     @traceable(name="rag.rewrite_query", run_type="chain")
     def _rewrite_query(self, query: str, attempt: int = 1) -> str:
         style_instruction = (
@@ -250,6 +237,9 @@ class AgenticRAG:
     ) -> RAGResult:
         """Retrieve grounded context for a query.
 
+        Every caller is a grounding call that has already decided it needs the
+        rubric, so retrieval always runs (there is no decide gate).
+
         allow_web_fallback: when the knowledge base has nothing relevant, fall
         back to a web search. Appropriate for public data (e.g. salary bands),
         but should be False for proprietary lookups (e.g. a company's hiring
@@ -257,10 +247,7 @@ class AgenticRAG:
         """
         if user_id:
             namespace = tenant_namespace(user_id, namespace)
-        steps = ["decide"]
-
-        if not self._should_retrieve(query):
-            return RAGResult(context="", steps_taken=["decide -> skip retrieval"])
+        steps = []
 
         relevant_docs: list[dict] = []
 

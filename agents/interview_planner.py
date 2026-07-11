@@ -61,7 +61,7 @@ def _plan_for_candidate(
 
     jd_summary = (
         f"Job Title: {jd.title}\n"
-        f"Seniority: {jd.seniority}\n"
+        f"Seniority: {jd.seniority.value}\n"
         f"Required Skills: {', '.join(jd.required_skills)}\n"
         f"Nice-to-have Skills: {', '.join(jd.nice_to_have_skills)}\n"
         f"Years of Experience Required: {jd.years_experience_required}\n"
@@ -196,7 +196,7 @@ def run_interview_planner(state: PipelineState) -> dict:
 
     user_id: str = state.get("user_id", "")
     rubric_result = rag.query(
-        query=f"interview process rounds format for {jd.seniority} {jd.title}",
+        query=f"interview process rounds format for {jd.seniority.value} {jd.title}",
         namespace="company_rubrics",
         user_id=user_id,
         allow_web_fallback=False,  # rubric is proprietary; generic web results would mislead

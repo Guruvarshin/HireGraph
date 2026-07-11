@@ -50,7 +50,7 @@ def _build_candidate_profile(
 
     return (
         f"Candidate Name: {candidate.get('name', 'Unknown')}\n"
-        f"Role: {jd.title} ({jd.seniority})\n"
+        f"Role: {jd.title} ({jd.seniority.value})\n"
         f"Location: {jd.location} | Remote Policy: {jd.remote_policy}"
         f"{salary_range}\n"
         f"\nInterview Evaluation:"
@@ -182,7 +182,7 @@ def run_offer_drafter(state: PipelineState) -> dict:
 
 
     market_query = (
-        f"{jd.seniority} {jd.title} salary compensation "
+        f"{jd.seniority.value} {jd.title} salary compensation "
         f"{jd.location} {jd.remote_policy}"
     )
     user_id: str = state.get("user_id", "")

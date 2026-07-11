@@ -74,7 +74,7 @@ def _score_candidate(
         f"Required Skills: {', '.join(jd.required_skills)}\n"
         f"Nice-to-have Skills: {', '.join(jd.nice_to_have_skills)}\n"
         f"Years of Experience Required: {jd.years_experience_required}\n"
-        f"Seniority: {jd.seniority}\n"
+        f"Seniority: {jd.seniority.value}\n"
         f"Location: {jd.location} | Remote Policy: {jd.remote_policy}"
     )
 
@@ -169,7 +169,7 @@ def run_resume_screener(state: PipelineState) -> dict:
 
     user_id: str = state.get("user_id", "")
     rubric_result = rag.query(
-        query=f"scoring criteria for {jd.seniority} {jd.title}",
+        query=f"scoring criteria for {jd.seniority.value} {jd.title}",
         namespace="company_rubrics",
         user_id=user_id,
         allow_web_fallback=False,  # rubric is proprietary; generic web results would mislead

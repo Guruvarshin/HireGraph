@@ -183,9 +183,20 @@ export default function InterviewPlanCard({ candidate, plan, onUpdatePlan, onApp
                 }}
               >
                 <div>
-                  <h4 style={{ fontWeight: 600, margin: 0, fontSize: "0.95rem" }}>
-                    Round {round.round_number}: {getRoundLabel(round.type)}
+                  <h4 style={{ fontWeight: 600, margin: 0, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                    Round {round.round_number}: {round.title || getRoundLabel(round.type)}
+                    <span style={{
+                      fontSize: "0.68rem", fontWeight: 600, padding: "0.1rem 0.5rem",
+                      borderRadius: "999px", background: "#eef2ff", color: "#4338ca",
+                    }}>
+                      {getRoundLabel(round.type)}
+                    </span>
                   </h4>
+                  {round.focus && (
+                    <p className="text-small text-muted" style={{ margin: "0.2rem 0 0", fontStyle: "italic" }}>
+                      {round.focus}
+                    </p>
+                  )}
                   <p className="text-small text-muted" style={{ margin: "0.15rem 0 0" }}>
                     {round.duration_minutes} min
                     {complete

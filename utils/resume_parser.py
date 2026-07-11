@@ -74,7 +74,7 @@ Return ONLY valid JSON with exactly this structure:
 {
   "name": "<candidate full name or null if not found>",
   "email": "<candidate email address or null if not found>",
-  "summary": "<comprehensive factual summary in your own words, organized under these headings: Profile, Skills, Experience, Education, Certifications, Projects>"
+  "summary": "<comprehensive factual summary as a SINGLE plain-text string. Use the headings Profile, Skills, Experience, Education, Certifications, Projects as inline labels within the text. Do NOT return a nested object.>"
 }
 
 Rules:
@@ -114,15 +114,30 @@ def _ai_parse(raw_text: str, filename: str) -> tuple[str, str, str]:
         name = _name_from_filename(filename)
         return _redacted_fallback(raw_text), name, ""
 
-    summary = parsed.get("summary") or _redacted_fallback(raw_text)
-    name = parsed.get("name") or _name_from_filename(filename)
-    email = parsed.get("email") or ""
+    # The model sometimes returns summary as a nested object keyed by heading
+    # (Profile/Skills/...) instead of a plain string. Coerce any shape to text.
+    summary = _stringify(parsed.get("summary")) or _redacted_fallback(raw_text)
+    name = _stringify(parsed.get("name")) or _name_from_filename(filename)
+    email = _stringify(parsed.get("email"))
 
     # Validate email looks real
     if email and not re.match(r"[^@]+@[^@]+\.[^@]+", email):
         email = ""
 
     return summary, name, email
+
+
+def _stringify(val) -> str:
+    """Flatten a str / dict / list from the LLM into plain text."""
+    if val is None:
+        return ""
+    if isinstance(val, str):
+        return val.strip()
+    if isinstance(val, dict):
+        return "\n\n".join(f"{k}:\n{_stringify(v)}" for k, v in val.items()).strip()
+    if isinstance(val, list):
+        return "\n".join(_stringify(v) for v in val).strip()
+    return str(val).strip()
 
 
 def _redacted_fallback(raw_text: str) -> str:

@@ -94,13 +94,13 @@ Retrieving a wide pool then reranking improves recall (not just ranking) by pull
 
 ## Email and Calendar
 
-Email is sent through the Brevo HTTP API over HTTPS, which works on cloud hosts that block outbound SMTP ports. A verified Brevo sender lets the app send from a Gmail address to any recipient without owning a domain. Interview invites include one `.ics` calendar attachment per scheduled round, which recipients can add to any calendar. Replies route back to the recruiter via the Reply-To header.
+Email is sent through the Brevo HTTP API over HTTPS, which works on cloud hosts that block outbound SMTP ports. A verified Brevo sender lets the app send from a Gmail address to any recipient without owning a domain. Interview invites go to both the candidate and each interviewer, with one `.ics` calendar attachment per scheduled round that recipients can add to any calendar. Replies route back to the recruiter via the Reply-To header.
 
 Google OAuth is used only for sign-in (non-sensitive scopes), so the app needs no Google verification.
 
 ## Observability
 
-The pipeline is instrumented with LangSmith. Because all calls run on LangChain and LangGraph, every LLM, agent, and graph call is traced automatically once the `LANGCHAIN_*` environment variables are set. The agentic RAG loop is additionally annotated with `@traceable` spans, and each run is tagged with its `thread_id` so traces can be filtered down to a single pipeline.
+The pipeline is instrumented with LangSmith. Because all calls run on LangChain and LangGraph, every LLM, agent, and graph call is traced automatically once the `LANGCHAIN_*` environment variables are set. Every stage is additionally annotated with named `@traceable` spans so a single run reads as a readable tree: each agent (`Agent 1: JD Parser` ... `Agent 5: Offer Drafter`), each per-candidate operation (`Score candidate`, `Plan candidate interview`, `Draft offer`), and each step of the agentic RAG loop (`rag.decide_retrieve`, `rag.rewrite_query`, `rag.pinecone_retrieve`, `rag.rerank`, `rag.grade_docs`). Every span exposes its inputs and outputs, and each run is tagged with its `thread_id` so traces can be filtered to a single pipeline.
 
 ## Project Structure
 

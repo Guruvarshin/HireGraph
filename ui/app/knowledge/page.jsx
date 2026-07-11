@@ -166,6 +166,24 @@ function UploadTab({ namespace, label, description, accept }) {
         <h3 style={{ margin: "0 0 0.4rem" }}>{label}</h3>
         <p className="text-muted" style={{ marginBottom: "1.25rem", fontSize: "0.9rem" }}>{description}</p>
 
+        {/* Formatting guidance - structured docs retrieve far more reliably */}
+        {namespace === "company_rubrics" && (
+          <div style={{
+            marginBottom: "1.25rem", padding: "0.9rem 1rem",
+            backgroundColor: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px",
+            fontSize: "0.85rem", color: "#1e3a8a", lineHeight: 1.6,
+          }}>
+            <strong>📑 For best results, structure your rubric into labelled sections.</strong>
+            {" "}Start each section with a heading line like{" "}
+            <code style={{ background: "#dbeafe", padding: "0 0.3rem", borderRadius: "4px" }}>SECTION 4 - INTERVIEW PROCESS AND ROUNDS FORMAT</code>{" "}
+            wrapped in <code style={{ background: "#dbeafe", padding: "0 0.3rem", borderRadius: "4px" }}>=====</code> rule lines.
+            The AI splits on these headings and keeps each section together, so a
+            query like “interview process” reliably retrieves the right section.
+            Recommended headings: hiring standards &amp; seniority, scoring criteria per role,
+            interview process &amp; rounds, salary &amp; equity, bias rules, JD details.
+          </div>
+        )}
+
         {/* Drop zone */}
         <div
           onClick={() => !file && document.getElementById(`file-${namespace}`)?.click()}

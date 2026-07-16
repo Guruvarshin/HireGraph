@@ -62,36 +62,48 @@ A single `company_rubrics` knowledge base per user holds everything the agents n
 
 The `AgenticRAG` class implements a self-correcting, multi-step retrieval loop:
 
-1. Rewrite: reformulate the query for better vector search (different terms on a retry)
-2. Retrieve: query Pinecone for a wide candidate pool (top-k 12)
-3. Rerank: reorder with a cross-encoder (`bge-reranker-v2-m3`, served by Pinecone inference) and narrow to the top 5, so chunks the embedding ranked lower but that actually answer the query are pulled in
+1. Retrieve on the original query first (the caller's own wording matches the corpus best); rewrite with different terminology only on a retry, after tracing showed rewrites drifting toward vocabulary absent from the rubric
+2. Retrieve: query Pinecone for a wide candidate pool (top-k 20)
+3. Rerank: reorder with a cross-encoder (`bge-reranker-v2-m3`, served by Pinecone inference) and narrow to the top 5. Measured effect: this significantly improves **ranking** (MRR +0.096, 95% CI [0.047, 0.146]); on the eval corpus it does **not** measurably improve recall, because the embedding already retrieves the gold chunk into the top 5 ~97% of the time (see Evaluation)
 4. Grade: an LLM scores each retained chunk for relevance (reflection)
 5. Retry: if results are weak, rewrite with different terminology (capped at 2 attempts)
 6. Fallback: web search via Tavily if the vector DB returns nothing (also graded; gated per query so proprietary rubric lookups never fall back to generic web data)
 
-Every caller is a grounding call that has already decided it needs the rubric, so retrieval always runs. (An earlier "decide whether to retrieve" gate was removed after tracing showed it wrongly classifying salary as general knowledge and skipping the offer drafter's pay-band lookup.) The loop stays agentic through its defining traits: reflection (grading its own results), adaptive iteration (rewrite-and-retry), and tool use (web-search fallback).
+Chunking is recursive: documents are split on structural boundaries (`SECTION` headers, rule lines, paragraphs) rather than a fixed word window, and each sub-chunk carries its section header so the tail of a long section is still attributable to it.
+
+Every caller is a grounding call that has already decided it needs the rubric, so retrieval always runs. An earlier "decide whether to retrieve" gate was removed — not because it was buggy, but because it was **redundant**: every call site into the RAG layer needs the rubric, so the gate's correct answer is always "yes". A component whose correct output is a constant can only add an LLM call, latency, and a false-negative failure mode (tracing caught it skipping the offer drafter's pay-band lookup). The loop stays agentic through its defining traits: reflection (grading its own results), adaptive iteration (rewrite-and-retry), and tool use (web-search fallback).
 
 ## Evaluation
 
-The `eval/` folder contains a runnable RAG evaluation against a labeled dataset. It indexes a small corpus into a temporary Pinecone namespace, measures retrieval quality (recall@k, precision@k, MRR vs ground-truth relevant ids) and generation quality (faithfulness and answer relevance via an LLM judge), then cleans up.
+The `eval/` folder contains a runnable RAG evaluation against a labeled dataset of **60 chunks and 200 queries** spanning six failure modes (single, distractor, multi-relevant, paraphrase, exact-term, out-of-domain). It indexes the corpus into a temporary Pinecone namespace, measures retrieval quality (recall@k, MRR vs ground-truth ids) and generation quality (faithfulness, answer relevance via an LLM judge), then cleans up.
 
 ```
-python eval/run_eval.py
+python eval/run_eval.py          # reports the held-out TEST split
+python eval/run_eval.py --dev    # DEV split, for tuning
+python eval/run_eval.py --all    # both + the full set
 ```
 
-Latest run over 27 documents and 20 queries spanning all failure modes (single, distractor, multi-relevant, paraphrase, exact-term, out-of-domain):
+**Methodology.** Config (`TOP_K`, `RETRIEVE_K`) is imported from the app so the eval cannot drift from what production runs. Queries are split **dev/test, stratified by failure mode with a fixed seed** — tuning happens on dev, the test split is reported once with the config frozen. Every aggregate carries a **95% bootstrap CI**, and rerank deltas use a **paired** bootstrap, so no improvement is claimed without error bars.
+
+Held-out TEST split (n=99: 89 answerable, 10 out-of-domain):
 
 ```
-Recall@5 (raw):      0.833
-Recall@5 (+ rerank): 0.979
-MRR (raw):           0.742
-MRR (+ reranker):    1.000
-Faithfulness/5:      4.50
-Answer relevance/5:  4.75
+Recall@5 (raw):      0.968  [0.930, 0.997]
+Recall@5 (+rerank):  0.985  [0.966, 1.000]
+  -> rerank delta:   +0.017 [-0.014, 0.056]   no effect (CI spans 0)
+MRR (raw):           0.885  [0.828, 0.940]
+MRR (+rerank):       0.980  [0.955, 1.000]
+  -> MRR delta:      +0.096 [0.047, 0.146]    SIGNIFICANT
+Faithfulness/5:      4.15   [3.83, 4.46]
+Answer relevance/5:  4.65   [4.42, 4.87]
 Out-of-domain:       100% rejection, 100% abstention (no hallucination)
 ```
 
-Retrieving a wide pool then reranking improves recall (not just ranking) by pulling in relevant chunks the embedding left outside the top 5; out-of-domain queries are correctly rejected rather than answered.
+**What this shows, honestly.** The cross-encoder significantly improves **ranking** (MRR +0.096), but on this corpus it does **not** measurably improve recall — the delta's confidence interval spans zero. That is a ceiling effect: retrieving 20 of 60 chunks, the bi-encoder already lands the gold chunk in the top 5 about 97% of the time, leaving no headroom. The reranker earns its place in the two places the corpus is genuinely hard: **paraphrase** recall (0.867 → 1.000) and **distractor** MRR (0.782 → 0.943, ordering among near-duplicate India/USA/UK bands). It has a real cost too — on multi-gold queries reranking can evict a relevant chunk (recall 0.942 → 0.908). Out-of-domain queries are rejected and abstained on 100% of the time; for a grounded system, correctly declining is the metric that matters most.
+
+`Precision@5` is reported by the harness but is not meaningful here: it is mechanically capped (a single-gold query at k=5 maxes out at 0.2), so it measures gold-set size, not quality.
+
+**Limitations.** This is a synthetic, self-authored benchmark — the corpus and queries share lexical priors with the chunker, so absolute numbers are optimistic. It is a **regression benchmark**, not evidence of real-world generalization. Making it defensible would mean sourcing queries from real usage traces and having relevance labeled by someone who did not build the retrieval. An earlier version of this README quoted `recall 0.833 -> 0.979` from a 20-query set that had been tuned against; that number did not survive a held-out split and has been retracted.
 
 ## Email and Calendar
 
